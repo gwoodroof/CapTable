@@ -1,11 +1,15 @@
-import { Module } from '@nestjs/common';
+import { Module, NestModule, MiddlewareConsumer } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { PrismaModule } from './common/prisma/prisma.module';
 import { TenantModule } from './modules/tenant/tenant.module';
 import { LedgerModule } from './modules/ledger/ledger.module';
 import { StakeholderModule } from './modules/stakeholder/stakeholder.module';
 import { SecurityModule } from './modules/security/security.module';
+import { PoolModule } from './modules/pool/pool.module';
+import { VestingScheduleModule } from './modules/vesting-schedule/vesting-schedule.module';
+import { GrantModule } from './modules/grant/grant.module';
 import { AuthModule } from './common/auth/auth.module';
+import { AuthMiddleware } from './common/middleware/auth.middleware';
 
 @Module({
   imports: [
@@ -19,6 +23,13 @@ import { AuthModule } from './common/auth/auth.module';
     LedgerModule,
     StakeholderModule,
     SecurityModule,
+    PoolModule,
+    VestingScheduleModule,
+    GrantModule,
   ],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer) {
+    consumer.apply(AuthMiddleware).forRoutes('*');
+  }
+}

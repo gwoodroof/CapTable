@@ -1,14 +1,12 @@
-import { Module, Injectable } from '@nestjs/common';
+import { Module } from '@nestjs/common';
 import { PrismaModule } from '../../common/prisma/prisma.module';
-
-@Injectable()
-export class SecurityService {
-  // Placeholder for Phase 5-9
-}
+import { SecurityService } from './security.service';
+import { SecurityController } from './security.controller';
 
 @Module({
   imports: [PrismaModule],
   providers: [SecurityService],
+  controllers: [SecurityController],
   exports: [SecurityService],
 })
 export class SecurityModule {}
