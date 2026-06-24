@@ -1,0 +1,262 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================================
+// Multi-Tenant Core
+// ============================================================================
+
+model Tenant {
+  id                String    @id @default(uuid())
+  name              String    @unique
+  authorizedShares  Decimal   @db.Decimal(24, 12) // Total authorized shares for this company
+  parValue          Decimal   @db.Decimal(20, 10) // Par value per share
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  // Relations
+  users             User[]
+  stakeholders      Stakeholder[]
+  pools             EquityPool[]
+  securities        Security[]
+  vestingSchedules  VestingSchedule[]
+  ledger            LedgerTransaction[]
+  grants            Grant[]
+  
+  // Row-Level Security: tenant_id is always scoped
+  @@index([id])
+}
+
+// ============================================================================
+// Authentication & Authorization
+// ============================================================================
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  passwordHash String
+  role      UserRole @default(STAKEHOLDER)
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId])
+  @@index([email])
+}
+
+enum UserRole {
+  ADMIN
+  INVESTOR
+  STAKEHOLDER
+}
+
+// ============================================================================
+// Stakeholders & Equity Holders
+// ============================================================================
+
+model Stakeholder {
+  id           String  @id @default(uuid())
+  name         String
+  email        String?
+  type         StakeholderType
+  tenantId     String
+  tenant       Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Relations
+  ledgerEntries LedgerTransaction[]
+  grants       Grant[]
+
+  @@unique([tenantId, email])
+  @@index([tenantId])
+}
+
+enum StakeholderType {
+  INDIVIDUAL
+  ENTITY
+}
+
+// ============================================================================
+// Securities (Equity Instruments)
+// ============================================================================
+
+model Security {
+  id           String   @id @default(uuid())
+  type         SecurityType
+  name         String?  // e.g., "Common Stock", "Series A Preferred"
+  tenantId     String
+  tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Relations
+  ledgerEntries LedgerTransaction[]
+  grants       Grant[]
+
+  @@index([tenantId])
+}
+
+enum SecurityType {
+  COMMON_STOCK
+  PREFERRED_STOCK
+  OPTION
+  SAFE
+  CONVERTIBLE_NOTE
+  WARRANT
+}
+
+// ============================================================================
+// Equity Pools & Options
+// ============================================================================
+
+model EquityPool {
+  id                String   @id @default(uuid())
+  name              String   // e.g., "2026 Equity Incentive Plan"
+  authorizedShares  Decimal  @db.Decimal(24, 12)
+  tenantId          String
+  tenant            Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([tenantId])
+}
+
+// ============================================================================
+// Vesting Schedules
+// ============================================================================
+
+model VestingSchedule {
+  id                    String   @id @default(uuid())
+  name                  String   // e.g., "4-year Vest with 1-year Cliff"
+  cliffMonths           Int      // Months until first vest
+  vestingDurationMonths Int      // Total vesting duration
+  vestingFrequency      VestingFrequency
+  tenantId              String
+  tenant                Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  // Relations
+  grants                Grant[]
+
+  @@index([tenantId])
+}
+
+enum VestingFrequency {
+  MONTHLY
+  QUARTERLY
+  ANNUALLY
+}
+
+// ============================================================================
+// Grants (Options, RSUs, SAFEs, etc.)
+// ============================================================================
+
+model Grant {
+  id                  String   @id @default(uuid())
+  stakeholderId       String
+  stakeholder         Stakeholder @relation(fields: [stakeholderId], references: [id], onDelete: Cascade)
+  
+  securityId          String
+  security            Security @relation(fields: [securityId], references: [id])
+  
+  quantity            Decimal  @db.Decimal(24, 12) // Total shares/options granted
+  strikePrice         Decimal? @db.Decimal(20, 10) // Only for options
+  
+  grantDate           DateTime
+  boardApprovalDate   DateTime?
+  
+  vestingScheduleId   String
+  vestingSchedule     VestingSchedule @relation(fields: [vestingScheduleId], references: [id])
+  
+  tenantId            String
+  tenant              Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@index([stakeholderId])
+  @@index([tenantId])
+  @@index([securityId])
+}
+
+// ============================================================================
+// THE IMMUTABLE LEDGER - Source of Truth
+// ============================================================================
+
+model LedgerTransaction {
+  id                  String   @id @default(uuid())
+  
+  // Multi-tenancy enforcement
+  tenantId            String
+  tenant              Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  
+  // Transaction details
+  transactionType     TransactionType
+  stakeholderId       String
+  stakeholder         Stakeholder @relation(fields: [stakeholderId], references: [id])
+  
+  securityId          String
+  security            Security @relation(fields: [securityId], references: [id])
+  
+  quantity            Decimal  @db.Decimal(24, 12)  // Shares affected
+  pricePerShare       Decimal? @db.Decimal(20, 10)  // For exercises, purchases
+  
+  // Timestamps (UTC)
+  timestamp           DateTime @default(now())
+  
+  // Audit trail & cryptographic integrity
+  dataHash            String   // SHA-256 hash of transaction data
+  previousRowHash     String?  // Hash of previous entry for this tenant (chain)
+  chainHash           String   // SHA-256(dataHash + previousRowHash)
+  
+  initiatedBy         String?  // User ID who initiated this
+  
+  createdAt           DateTime @default(now())
+
+  // Append-only: No updates or deletes
+  @@index([tenantId])
+  @@index([timestamp])
+  @@index([transactionType])
+  @@index([stakeholderId])
+  @@unique([tenantId, id]) // Ensures no cross-tenant access
+}
+
+enum TransactionType {
+  ISSUANCE           // New shares/options issued
+  TRANSFER           // Transfer between stakeholders
+  VEST               // Options/RSUs vest
+  EXERCISE           // Exercise of options
+  CANCELLATION       // Forfeiture/cancellation
+  ADJUSTMENT         // Manual adjustment (with audit trail)
+}
+
+// ============================================================================
+// Historical Snapshots (Optional, for Performance)
+// ============================================================================
+
+model CapTableSnapshot {
+  id              String   @id @default(uuid())
+  tenantId        String
+  snapshotDate    DateTime // The date this snapshot represents
+  
+  // Aggregated balances at snapshot date
+  data            Json     // Serialized cap table state
+  
+  createdAt       DateTime @default(now())
+
+  @@index([tenantId])
+  @@index([snapshotDate])
+}
