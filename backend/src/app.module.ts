@@ -1,4 +1,5 @@
 import { Module, NestModule, MiddlewareConsumer } from '@nestjs/common';
+import { HealthController } from './health.controller';
 import { ConfigModule } from '@nestjs/config';
 import { PrismaModule } from './common/prisma/prisma.module';
 import { TenantModule } from './modules/tenant/tenant.module';
@@ -12,6 +13,7 @@ import { AuthModule } from './common/auth/auth.module';
 import { AuthMiddleware } from './common/middleware/auth.middleware';
 
 @Module({
+  controllers: [HealthController],
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
