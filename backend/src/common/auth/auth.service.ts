@@ -1,7 +1,9 @@
-import { Injectable, UnauthorizedException, ConflictException } from '@nestjs/common';
+import { Injectable, UnauthorizedException, ConflictException, BadRequestException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../prisma/prisma.service';
+import { EmailService } from '../email/email.service';
 import * as bcrypt from 'bcrypt';
+import * as crypto from 'crypto';
 import { OAuth2Client } from 'google-auth-library';
 
 export interface JWTPayload {
@@ -11,6 +13,8 @@ export interface JWTPayload {
   email: string;
 }
 
+const VERIFICATION_TOKEN_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+
 @Injectable()
 export class AuthService {
   private googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
@@ -18,6 +22,7 @@ export class AuthService {
   constructor(
     private jwtService: JwtService,
     private prisma: PrismaService,
+    private emailService: EmailService,
   ) {}
 
   async generateToken(userId: string, tenantId: string, email: string, role: string): Promise<string> {
@@ -42,27 +47,64 @@ export class AuthService {
     }
   }
 
-  async register(email: string, password: string, companyName: string): Promise<string> {
-    const existing = await this.prisma.user.findUnique({ where: { email } });
-    if (existing) {
+  async register(email: string, password: string, companyName: string): Promise<void> {
+    const existingUser = await this.prisma.user.findUnique({ where: { email } });
+    if (existingUser) {
+      throw new ConflictException('Email already registered');
+    }
+
+    const passwordHash = await bcrypt.hash(password, 12);
+    const token = crypto.randomBytes(32).toString('hex');
+    const expiresAt = new Date(Date.now() + VERIFICATION_TOKEN_TTL_MS);
+
+    // Upsert so a repeated signup attempt before verification refreshes the token
+    await this.prisma.pendingRegistration.upsert({
+      where: { email },
+      update: { passwordHash, companyName, token, expiresAt },
+      create: { email, passwordHash, companyName, token, expiresAt },
+    });
+
+    await this.emailService.sendEmailVerification(email, token);
+  }
+
+  async verifyEmail(token: string): Promise<string> {
+    const pending = await this.prisma.pendingRegistration.findUnique({ where: { token } });
+
+    if (!pending) {
+      throw new BadRequestException('Invalid or expired verification link');
+    }
+    if (pending.expiresAt < new Date()) {
+      await this.prisma.pendingRegistration.delete({ where: { token } });
+      throw new BadRequestException('Verification link has expired. Please sign up again.');
+    }
+
+    // Check the email wasn't registered via another path (e.g. Google SSO) while waiting
+    const existingUser = await this.prisma.user.findUnique({ where: { email: pending.email } });
+    if (existingUser) {
+      await this.prisma.pendingRegistration.delete({ where: { token } });
       throw new ConflictException('Email already registered');
     }
 
     const tenant = await this.prisma.tenant.create({
       data: {
-        name: companyName,
+        name: pending.companyName,
         authorizedShares: '10000000',
         parValue: '0.0001',
       },
     });
 
-    const passwordHash = await bcrypt.hash(password, 12);
-
     const user = await this.prisma.user.create({
-      data: { email, passwordHash, role: 'ADMIN', tenantId: tenant.id },
+      data: {
+        email: pending.email,
+        passwordHash: pending.passwordHash,
+        role: 'ADMIN',
+        tenantId: tenant.id,
+      },
     });
 
-    return this.generateToken(user.id, tenant.id, email, 'ADMIN');
+    await this.prisma.pendingRegistration.delete({ where: { token } });
+
+    return this.generateToken(user.id, tenant.id, pending.email, 'ADMIN');
   }
 
   async login(email: string, password: string): Promise<string> {

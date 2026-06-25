@@ -10,6 +10,30 @@
 
 ## User Scenarios & Testing *(mandatory)*
 
+### User Story 0.1 - Email Verification on Signup (Priority: P1)
+
+**As a** new user signing up with email and password, **I want to** verify ownership of my email address before my account is created, **so that** the platform can confirm deliverability and prevent abuse with unowned email addresses.
+
+**Why this priority**: Protects against account enumeration and ensures the platform can reliably contact account owners. Not required for Google SSO because Google has already verified the address.
+
+**Independent Test**: Submit a registration form, confirm no user record is created, click the link in the verification email, then confirm the user and tenant are created and a JWT is returned.
+
+**Acceptance Scenarios**:
+1. **Given** a valid email and password, **When** `POST /api/v1/auth/register` is called, **Then** a verification email is sent, no user or tenant is created yet, and the response is `202` with `{ message: "Verification email sent..." }`.
+2. **Given** a valid verification token, **When** `GET /api/v1/auth/verify-email?token=<token>` is called, **Then** the tenant and user are created and the browser is redirected to `${FRONTEND_URL}/auth/verified?token=<jwt>`.
+3. **Given** an expired or unknown verification token, **When** `GET /api/v1/auth/verify-email?token=<token>` is called, **Then** the system returns `400 Bad Request`.
+4. **Given** an email already registered in the `User` table, **When** `POST /api/v1/auth/register` is called with that email, **Then** the system returns `409 Conflict` and no verification email is sent.
+5. **Given** a repeated signup with the same email before verification, **When** `POST /api/v1/auth/register` is called again, **Then** a fresh token is issued (previous one invalidated) and a new verification email is sent.
+6. **Given** a Google SSO signup, **When** completing registration via `POST /api/v1/auth/google/register`, **Then** no email verification step is required — the user and tenant are created immediately.
+
+**Key Implementation Notes**:
+- Pending signups are stored in the `PendingRegistration` table (email, bcrypt-hashed password, companyName, token, expiresAt).
+- Verification tokens are 32-byte cryptographically random hex strings with a 24-hour TTL.
+- Verification emails are delivered via Postmark (env: `POSTMARK_API_KEY`).
+- After successful verification the `PendingRegistration` record is deleted.
+
+---
+
 ### User Story 1.1 - Company Onboarding & Founding Stock (Priority: P1)
 
 **As a** Company Founder, **I want to** initialize my company's legal entity metadata (Authorized Shares, Par Value, Class A Common Stock) and issue initial shares to co-founders, **so that** the baseline ownership structure is established.
@@ -121,6 +145,7 @@
 
 ### Functional Requirements
 
+- **FR-000: Email Verification on Signup**: Users registering with email/password MUST verify their email address via a one-time link before a `User` or `Tenant` record is created. Google SSO users are exempt.
 - **FR-001: Immutable Ledger**: All equity events MUST be recorded in an append-only transaction ledger.
 - **FR-002: Multi-Tenant Isolation**: Every database record MUST be associated with a `tenant_id` and enforced via middleware.
 - **FR-003: Data Precision**: All share counts and monetary values MUST use `Decimal` types (min 6 decimal places for shares).
@@ -139,6 +164,7 @@
 
 ## Key Entities
 
+- **PendingRegistration**: Temporary record holding a pre-hashed password, company name, and short-lived token for a signup that has not yet been email-verified. Deleted upon successful verification.
 - **Tenant**: Represents a legal company entity.
 - **Stakeholder**: An individual or entity holding equity (Founders, Employees, Investors).
 - **Security**: The base class for equity instruments (Common Stock, Preferred Stock, Options, SAFEs).

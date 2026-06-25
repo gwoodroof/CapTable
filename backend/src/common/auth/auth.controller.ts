@@ -1,4 +1,4 @@
-import { Controller, Post, Body, HttpCode } from '@nestjs/common';
+import { Controller, Post, Get, Body, HttpCode, Query, Redirect } from '@nestjs/common';
 import { AuthService } from './auth.service';
 
 class RegisterDto {
@@ -26,9 +26,18 @@ export class AuthController {
   constructor(private authService: AuthService) {}
 
   @Post('register')
+  @HttpCode(202)
   async register(@Body() body: RegisterDto) {
-    const token = await this.authService.register(body.email, body.password, body.companyName);
-    return { token };
+    await this.authService.register(body.email, body.password, body.companyName);
+    return { message: 'Verification email sent. Please check your inbox to complete signup.' };
+  }
+
+  @Get('verify-email')
+  @Redirect()
+  async verifyEmail(@Query('token') token: string) {
+    const jwtToken = await this.authService.verifyEmail(token);
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+    return { url: `${frontendUrl}/auth/verified?token=${jwtToken}`, statusCode: 302 };
   }
 
   @Post('login')
