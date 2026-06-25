@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import Head from 'next/head';
 
 // Donut "C" logo. Outer r=80, inner r=40, gap faces right (305°→55° CW = 110°).
@@ -65,6 +65,41 @@ const styles = {
     fontWeight: 700,
     fontSize: '20px',
     color: 'white',
+  } as React.CSSProperties,
+  alphaBadgeWrap: {
+    display: 'inline-block',
+    position: 'relative' as const,
+    marginLeft: '8px',
+    verticalAlign: 'middle',
+    top: '-1px',
+  } as React.CSSProperties,
+  alphaBadge: {
+    fontSize: '10px',
+    fontWeight: 700,
+    letterSpacing: '0.08em',
+    textTransform: 'uppercase' as const,
+    color: '#f59e0b',
+    background: 'rgba(245,158,11,0.15)',
+    border: '1px solid rgba(245,158,11,0.4)',
+    borderRadius: '4px',
+    padding: '1px 6px',
+    lineHeight: '16px',
+    cursor: 'default',
+  } as React.CSSProperties,
+  alphaTooltip: {
+    position: 'absolute' as const,
+    top: 'calc(100% + 8px)',
+    left: '0',
+    background: '#1e293b',
+    border: '1px solid rgba(245,158,11,0.4)',
+    borderRadius: '6px',
+    padding: '8px 12px',
+    fontSize: '12px',
+    color: '#e2e8f0',
+    whiteSpace: 'nowrap' as const,
+    pointerEvents: 'none' as const,
+    zIndex: 100,
+    boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
   } as React.CSSProperties,
   navSub: {
     marginLeft: 'auto',
@@ -259,8 +294,7 @@ const styles = {
   footer: {
     background: '#0f172a',
     padding: '32px',
-    textAlign: 'center' as const,
-  },
+  } as React.CSSProperties,
   footerText: {
     fontFamily: "'Outfit', sans-serif",
     fontSize: '13px',
@@ -270,25 +304,33 @@ const styles = {
 };
 
 export default function Home() {
+  const [alphaBadgeHovered, setAlphaBadgeHovered] = useState(false);
   return (
     <>
       <Head>
         <title>CapTable — Equity Management for Founders</title>
         <meta name="description" content="Precise, auditable cap table management for modern companies" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
-        <link
-          href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&display=swap"
-          rel="stylesheet"
-        />
       </Head>
 
       <div style={styles.body}>
         {/* Nav */}
         <nav style={styles.nav}>
           <PiconLogo size={34} variant="light" />
-          <span style={styles.navBrand}>CapTable</span>
+          <span style={styles.navBrand}>CapTable
+            <span
+              style={styles.alphaBadgeWrap}
+              onMouseEnter={() => setAlphaBadgeHovered(true)}
+              onMouseLeave={() => setAlphaBadgeHovered(false)}
+            >
+              <span style={styles.alphaBadge}>Alpha</span>
+              {alphaBadgeHovered && (
+                <span style={styles.alphaTooltip}>
+                  ⚠ This app is under rapid development and is currently for educational uses only.
+                </span>
+              )}
+            </span>
+          </span>
           <span style={styles.navSub}>Manage equity &amp; ownership</span>
         </nav>
 
@@ -374,13 +416,13 @@ export default function Home() {
         </section>
 
         {/* Footer */}
-        <footer style={styles.footer}>
+        <footer style={{ ...styles.footer, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <p style={styles.footerText}>
             &copy; {new Date().getFullYear()} Consort Labs &middot;{' '}
             <a href="https://consortlabs.com" target="_blank" rel="noopener noreferrer" style={{ color: '#64748b' }}>consortlabs.com</a>
-            {' '}&middot;{' '}
+          </p>
+          <p style={{ ...styles.footerText, display: 'flex', gap: '20px' }}>
             <a href="/privacy" style={{ color: '#64748b' }}>Privacy</a>
-            {' '}&middot;{' '}
             <a href="/terms" style={{ color: '#64748b' }}>Terms</a>
           </p>
         </footer>

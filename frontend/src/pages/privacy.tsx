@@ -4,7 +4,7 @@ import Head from 'next/head';
 function PiconLogo({ size = 32 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
-      <path d="M 145.9 165.5 A 80 80 0 0 1 54.1 165.5 L 77.1 132.8 A 40 40 0 0 0 122.9 132.8 Z" fill="#1e293b" />
+      <path d="M 145.9 165.5 A 80 80 0 0 1 54.1 165.5 L 77.1 132.8 A 40 40 0 0 0 122.9 132.8 Z" fill="#f0f4f8" />
       <path d="M 54.1 165.5 A 80 80 0 0 1 54.1 34.5 L 77.1 67.2 A 40 40 0 0 0 77.1 132.8 Z" fill="#f59e0b" />
       <path d="M 54.1 34.5 A 80 80 0 0 1 145.9 34.5 L 122.9 67.2 A 40 40 0 0 0 77.1 67.2 Z" fill="#0066cc" />
     </svg>
@@ -17,9 +17,6 @@ export default function Privacy() {
       <Head>
         <title>Privacy Policy — CapTable</title>
         <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
-        <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
       </Head>
 
       <div style={{ fontFamily: "'Outfit', sans-serif", minHeight: '100vh', background: '#f8f9fb', display: 'flex', flexDirection: 'column' }}>
@@ -130,13 +127,13 @@ export default function Privacy() {
         </main>
 
         {/* Footer */}
-        <footer style={{ background: '#0f172a', padding: '32px', textAlign: 'center' }}>
+        <footer style={{ background: '#0f172a', padding: '32px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <p style={{ fontFamily: "'Outfit', sans-serif", fontSize: '13px', color: '#475569', margin: 0 }}>
             &copy; {new Date().getFullYear()} Consort Labs &middot;{' '}
             <a href="https://consortlabs.com" target="_blank" rel="noopener noreferrer" style={{ color: '#475569' }}>consortlabs.com</a>
-            {' '}&middot;{' '}
+          </p>
+          <p style={{ fontFamily: "'Outfit', sans-serif", fontSize: '13px', color: '#475569', margin: 0, display: 'flex', gap: '20px' }}>
             <a href="/privacy" style={{ color: '#475569' }}>Privacy</a>
-            {' '}&middot;{' '}
             <a href="/terms" style={{ color: '#475569' }}>Terms</a>
           </p>
         </footer>
