@@ -1,0 +1,25 @@
+name: Smoke tests
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  smoke:
+    name: Post-deploy smoke
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Wait for deploy and run smoke tests
+        env:
+          SMOKE_FRONTEND_URL:  https://getcaptable.com
+          SMOKE_API_URL:       https://api.getcaptable.com
+          SMOKE_PASSWORD:      ${{ secrets.SMOKE_PASSWORD }}
+          POSTMARK_API_TOKEN:  ${{ secrets.POSTMARK_API_TOKEN }}
+        run: node scripts/smoke.js
