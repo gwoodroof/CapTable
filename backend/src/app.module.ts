@@ -1,4 +1,5 @@
 import { Module, NestModule, MiddlewareConsumer } from '@nestjs/common';
+import { APP_INTERCEPTOR } from '@nestjs/core';
 import { HealthController } from './health.controller';
 import { ConfigModule } from '@nestjs/config';
 import { PrismaModule } from './common/prisma/prisma.module';
@@ -11,13 +12,15 @@ import { VestingScheduleModule } from './modules/vesting-schedule/vesting-schedu
 import { GrantModule } from './modules/grant/grant.module';
 import { AuthModule } from './common/auth/auth.module';
 import { AuthMiddleware } from './common/middleware/auth.middleware';
+import { TenantInterceptor } from './common/interceptors/tenant.interceptor';
 
 @Module({
   controllers: [HealthController],
+  providers: [{ provide: APP_INTERCEPTOR, useClass: TenantInterceptor }],
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      envFilePath: '.env',
+      envFilePath: [`.env.${process.env.NODE_ENV || 'development'}`, '.env'],
     }),
     PrismaModule,
     AuthModule,

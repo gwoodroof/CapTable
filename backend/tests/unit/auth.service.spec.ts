@@ -37,6 +37,9 @@ const makeMockPrisma = () => ({
   tenant: {
     create: vi.fn(),
   },
+  companyMembership: {
+    create: vi.fn(),
+  },
   pendingRegistration: {
     findUnique: vi.fn(),
     upsert: vi.fn(),

@@ -13,7 +13,9 @@ datasource db {
 
 model Tenant {
   id                String    @id @default(uuid())
-  name              String    @unique
+  name              String
+  website           String?
+  iconUrl           String?
   authorizedShares  Decimal   @db.Decimal(24, 12) // Total authorized shares for this company
   parValue          Decimal   @db.Decimal(20, 10) // Par value per share
   createdAt         DateTime  @default(now())
@@ -21,6 +23,7 @@ model Tenant {
 
   // Relations
   users             User[]
+  memberships       CompanyMembership[]
   stakeholders      Stakeholder[]
   pools             EquityPool[]
   securities        Security[]
@@ -49,18 +52,34 @@ model PendingRegistration {
 }
 
 model User {
-  id        String   @id @default(uuid())
-  email     String   @unique
+  id           String              @id @default(uuid())
+  email        String              @unique
   passwordHash String
-  role      UserRole @default(STAKEHOLDER)
-  tenantId  String
-  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  
+  role         UserRole            @default(STAKEHOLDER)
+  tenantId     String
+  tenant       Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  memberships  CompanyMembership[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([tenantId])
   @@index([email])
+}
+
+model CompanyMembership {
+  id       String   @id @default(uuid())
+  userId   String
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenantId String
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  role     UserRole @default(STAKEHOLDER)
+
+  createdAt DateTime @default(now())
+
+  @@unique([userId, tenantId])
+  @@index([userId])
+  @@index([tenantId])
 }
 
 enum UserRole {
@@ -255,20 +274,3 @@ enum TransactionType {
   ADJUSTMENT         // Manual adjustment (with audit trail)
 }
 
-// ============================================================================
-// Historical Snapshots (Optional, for Performance)
-// ============================================================================
-
-model CapTableSnapshot {
-  id              String   @id @default(uuid())
-  tenantId        String
-  snapshotDate    DateTime // The date this snapshot represents
-  
-  // Aggregated balances at snapshot date
-  data            Json     // Serialized cap table state
-  
-  createdAt       DateTime @default(now())
-
-  @@index([tenantId])
-  @@index([snapshotDate])
-}

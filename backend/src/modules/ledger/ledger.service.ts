@@ -1,9 +1,19 @@
 import { Injectable, BadRequestException, InternalServerErrorException } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { EmailService } from '../../common/email/email.service';
 import { PrecisionMath, decimal } from '../../common/utils/math';
 import { AuditTrail } from '../../common/utils/audit-trail';
 import { TransactionType } from '@prisma/client';
 import Decimal from 'decimal.js';
+
+const SECURITY_TYPE_LABELS: Record<string, string> = {
+  COMMON_STOCK: 'Common Stock',
+  PREFERRED_STOCK: 'Preferred Stock',
+  OPTION: 'Options',
+  SAFE: 'SAFE',
+  CONVERTIBLE_NOTE: 'Convertible Note',
+  WARRANT: 'Warrant',
+};
 
 export interface RecordTransactionInput {
   tenantId: string;
@@ -17,7 +27,10 @@ export interface RecordTransactionInput {
 
 @Injectable()
 export class LedgerService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private emailService: EmailService,
+  ) {}
 
   /**
    * Record an immutable ledger transaction
@@ -121,6 +134,23 @@ export class LedgerService {
           initiatedBy: initiatedBy || null,
         },
       });
+
+      if (stakeholder.email) {
+        const securityLabel = security.name ?? (SECURITY_TYPE_LABELS[security.type] ?? security.type);
+        this.emailService
+          .sendLedgerNotification({
+            to: stakeholder.email,
+            stakeholderName: stakeholder.name,
+            companyName: tenant.name,
+            tenantId,
+            transactionType,
+            quantity: PrecisionMath.toString(quantityDecimal),
+            securityLabel,
+          })
+          .catch(() => {
+            // Non-blocking: a notification failure must never compromise ledger integrity
+          });
+      }
 
       return ledgerEntry;
     } catch (error) {

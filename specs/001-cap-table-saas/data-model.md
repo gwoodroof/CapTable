@@ -8,17 +8,40 @@ The system uses a relational PostgreSQL schema with a focus on an append-only le
 ### Tenants
 Stores company metadata.
 - `id`: UUID (Primary Key)
-- `name`: String
+- `name`: String — not unique; two tenants may share the same display name. Identity is always by `id`.
+- `website`: String (Nullable) — optional company website URL.
+- `icon_url`: String (Nullable) — optional URL to a square company icon, displayed at 28×28px in the nav bar.
 - `authorized_shares`: NUMERIC(24, 12)
 - `par_value`: NUMERIC(20, 10)
 - `created_at`: Timestamp
 
 ### Users
-Identity management.
+Authenticated identities. NOT tied to a single tenant — company membership and role are tracked via `CompanyMembership`.
 - `id`: UUID (PK)
 - `email`: String (Unique)
-- `role`: Enum (ADMIN, INVESTOR, STAKEHOLDER)
+- `email_verified`: Boolean
+- `password_hash`: String (Nullable — null for Google SSO users)
+- `created_at`: Timestamp
+
+### CompanyMembership
+Join table linking a User to a Tenant with a per-company role.
+- `id`: UUID (PK)
+- `user_id`: UUID (FK to Users)
 - `tenant_id`: UUID (FK to Tenants)
+- `role`: Enum (ADMIN, STAKEHOLDER)
+- `created_at`: Timestamp
+- UNIQUE constraint on (`user_id`, `tenant_id`)
+
+### CompanyInvitation
+Pending and historical invitations to join a company.
+- `id`: UUID (PK)
+- `tenant_id`: UUID (FK to Tenants)
+- `invitee_email`: String
+- `token`: String (Unique, 32-byte hex, 7-day TTL)
+- `status`: Enum (PENDING, ACCEPTED, EXPIRED)
+- `expires_at`: Timestamp
+- `created_at`: Timestamp
+- UNIQUE constraint on (`tenant_id`, `invitee_email`) where `status = PENDING` (enforced via partial index)
 
 ### Stakeholders
 Profiles of equity holders (can be individuals or entities).
@@ -71,7 +94,8 @@ Every equity event MUST be recorded here.
 ---
 
 ## Relational Integrity & Multi-Tenancy
-- **Tenant Isolation**: Every query MUST include `WHERE tenant_id = current_tenant_id`.
+- **Tenant Isolation**: Every query MUST include `WHERE tenant_id = current_tenant_id`. The tenant ID is resolved from the authenticated user's `CompanyMembership` for the requested company, not from a field on the `User` record.
+- **Invitation Gate**: Before inserting a `LedgerTransaction` for a stakeholder, the backend MUST verify that a `CompanyInvitation` with status `ACCEPTED` (or at minimum `PENDING`) exists for that stakeholder's email in the same `tenant_id`.
 - **Atomic Transactions**: Complex operations (e.g., EXERCISE) must run in a single DB transaction:
   1. Check vested amount from Ledger.
   2. Record EXERCISE in Ledger (reduces option balance).

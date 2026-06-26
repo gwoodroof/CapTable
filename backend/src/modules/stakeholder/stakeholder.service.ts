@@ -95,6 +95,16 @@ export class StakeholderService {
     return { stakeholder, balances, grants, vestingEvents };
   }
 
+  async getMyEquity(tenantId: string, email: string) {
+    const stakeholder = await this.prisma.stakeholder.findUnique({
+      where: { tenantId_email: { tenantId, email } },
+    });
+    if (!stakeholder) {
+      return { stakeholder: null, balances: [], grants: [], vestingEvents: [] };
+    }
+    return this.getAdminStakeholderSummary(tenantId, stakeholder.id);
+  }
+
   async getStakeholderSummary(tenantId: string, stakeholderId: string) {
     const stakeholder = await this.prisma.stakeholder.findUnique({ where: { id: stakeholderId } });
     if (!stakeholder || stakeholder.tenantId !== tenantId) throw new Error('Stakeholder not found');

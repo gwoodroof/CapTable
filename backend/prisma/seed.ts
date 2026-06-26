@@ -45,7 +45,6 @@ async function main() {
   console.log('Seeding Acme, Inc. cap table...\n');
 
   // ── Wipe existing data (reverse FK order) ─────────────────────────────────
-  await prisma.capTableSnapshot.deleteMany();
   await prisma.ledgerTransaction.deleteMany();
   await prisma.grant.deleteMany();
   await prisma.vestingSchedule.deleteMany();

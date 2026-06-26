@@ -41,7 +41,7 @@ export default function Login() {
         return;
       }
       localStorage.setItem('ct_token', data.token);
-      router.push('/admin');
+      router.push('/companies');
     } catch {
       setError('Could not connect to server');
     } finally {
@@ -68,7 +68,7 @@ export default function Login() {
         router.push('/signup?mode=google');
       } else {
         localStorage.setItem('ct_token', data.token);
-        router.push('/admin');
+        router.push('/companies');
       }
     } catch {
       setError('Could not connect to server');

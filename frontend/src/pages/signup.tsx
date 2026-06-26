@@ -20,6 +20,7 @@ export default function Signup() {
   const [form, setForm] = useState({ companyName: '', email: '', password: '', confirm: '' });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [verificationSent, setVerificationSent] = useState(false);
 
   // googleCredential is set when Google SSO completes but no account exists yet.
   // When non-null the form collapses to company-name-only.
@@ -66,7 +67,7 @@ export default function Signup() {
         }
         sessionStorage.removeItem('google_credential');
         localStorage.setItem('ct_token', data.token);
-        router.push('/admin');
+        router.push('/companies');
       } else {
         // Email + password path.
         if (form.password !== form.confirm) {
@@ -87,8 +88,7 @@ export default function Signup() {
           setError(data.message || 'Registration failed');
           return;
         }
-        localStorage.setItem('ct_token', data.token);
-        router.push('/admin');
+        setVerificationSent(true);
       }
     } catch {
       setError('Could not connect to server');
@@ -118,7 +118,7 @@ export default function Signup() {
       } else {
         // Account already exists — log them in.
         localStorage.setItem('ct_token', data.token);
-        router.push('/admin');
+        router.push('/companies');
       }
     } catch {
       setError('Could not connect to server');
@@ -152,7 +152,18 @@ export default function Signup() {
               <a href="/login" style={{ color: '#0066cc', textDecoration: 'none' }}>Sign in</a>
             </p>
 
-            {showCompanyNameOnly ? (
+            {verificationSent ? (
+              <div style={{ background: '#0f2a1a', border: '1px solid #166534', borderRadius: '12px', padding: '32px 24px', textAlign: 'center' }}>
+                <div style={{ fontSize: '40px', marginBottom: '16px' }}>📬</div>
+                <h2 style={{ color: '#4ade80', fontSize: '20px', fontWeight: 700, margin: '0 0 12px 0' }}>Check your inbox</h2>
+                <p style={{ color: '#86efac', fontSize: '15px', margin: '0 0 8px 0' }}>
+                  We sent a verification link to <strong>{form.email}</strong>.
+                </p>
+                <p style={{ color: '#64748b', fontSize: '13px', margin: 0 }}>
+                  Click the link in the email to complete your signup. The link expires in 24 hours.
+                </p>
+              </div>
+            ) : showCompanyNameOnly ? (
               /* Company-name-only form — shown after Google SSO confirms a new user */
               <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                 <p style={{ fontSize: '14px', color: '#64748b', margin: '0 0 4px 0' }}>

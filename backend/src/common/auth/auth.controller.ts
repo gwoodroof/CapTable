@@ -1,4 +1,5 @@
-import { Controller, Post, Get, Body, HttpCode, Query, Redirect } from '@nestjs/common';
+import { Controller, Post, Get, Body, HttpCode, Query, Redirect, Req, UnauthorizedException } from '@nestjs/common';
+import { Request } from 'express';
 import { AuthService } from './auth.service';
 
 class RegisterDto {
@@ -56,6 +57,14 @@ export class AuthController {
   @Post('google/register')
   async googleRegister(@Body() body: GoogleRegisterDto) {
     const token = await this.authService.googleRegister(body.credential, body.companyName);
+    return { token };
+  }
+
+  @Post('switch-company')
+  @HttpCode(200)
+  async switchCompany(@Body() body: { tenantId: string }, @Req() req: Request) {
+    if (!req.user) throw new UnauthorizedException('Authentication required');
+    const token = await this.authService.switchCompany(req.user.sub, req.user.email, body.tenantId);
     return { token };
   }
 }

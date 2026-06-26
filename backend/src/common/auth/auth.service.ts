@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException, ConflictException, BadRequestException } from '@nestjs/common';
+import { Injectable, UnauthorizedException, ConflictException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
@@ -102,6 +102,10 @@ export class AuthService {
       },
     });
 
+    await this.prisma.companyMembership.create({
+      data: { userId: user.id, tenantId: tenant.id, role: 'ADMIN' },
+    });
+
     await this.prisma.pendingRegistration.delete({ where: { token } });
 
     return this.generateToken(user.id, tenant.id, pending.email, 'ADMIN');
@@ -152,7 +156,21 @@ export class AuthService {
       data: { email, passwordHash, role: 'ADMIN', tenantId: tenant.id },
     });
 
+    await this.prisma.companyMembership.create({
+      data: { userId: user.id, tenantId: tenant.id, role: 'ADMIN' },
+    });
+
     return this.generateToken(user.id, tenant.id, email, 'ADMIN');
+  }
+
+  async switchCompany(userId: string, email: string, targetTenantId: string): Promise<string> {
+    const membership = await this.prisma.companyMembership.findUnique({
+      where: { userId_tenantId: { userId, tenantId: targetTenantId } },
+    });
+    if (!membership) {
+      throw new ForbiddenException('You are not a member of this company');
+    }
+    return this.generateToken(userId, targetTenantId, email, membership.role);
   }
 
   private async verifyGoogleCredential(credential: string): Promise<string> {
