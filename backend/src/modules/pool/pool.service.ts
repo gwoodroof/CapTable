@@ -16,15 +16,19 @@ export class PoolService {
       throw new BadRequestException('authorizedShares exceeds precision limit (max 12 decimal places)');
     }
 
-    return this.prisma.equityPool.create({
-      data: { name: data.name.trim(), authorizedShares: shares, tenantId },
-    });
+    return this.prisma.withTenant(tenantId, (tx) =>
+      tx.equityPool.create({
+        data: { name: data.name.trim(), authorizedShares: shares, tenantId },
+      }),
+    );
   }
 
   async listPools(tenantId: string) {
-    return this.prisma.equityPool.findMany({
-      where: { tenantId },
-      orderBy: { createdAt: 'desc' },
-    });
+    return this.prisma.withTenant(tenantId, (tx) =>
+      tx.equityPool.findMany({
+        where: { tenantId },
+        orderBy: { createdAt: 'desc' },
+      }),
+    );
   }
 }

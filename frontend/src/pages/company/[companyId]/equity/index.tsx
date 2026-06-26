@@ -191,7 +191,7 @@ export default function MyEquity() {
   const { companyId } = router.query as { companyId?: string };
 
   const [summary, setSummary] = useState<EquitySummary | null>(null);
-  const [email, setEmail] = useState('');
+  const [displayName, setDisplayName] = useState('');
   const [isAdmin, setIsAdmin] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -222,10 +222,10 @@ export default function MyEquity() {
         localStorage.setItem('ct_token', newToken);
         activeToken = newToken;
         const newPayload = decodeJwt(newToken)!;
-        setEmail(newPayload.email as string);
+        setDisplayName((newPayload.name as string) || (newPayload.email as string));
         setIsAdmin(newPayload.role === 'ADMIN');
       } else {
-        setEmail(payload!.email as string);
+        setDisplayName((payload!.name as string) || (payload!.email as string));
         setIsAdmin(payload!.role === 'ADMIN');
       }
 
@@ -286,7 +286,7 @@ export default function MyEquity() {
       </Head>
 
       <div style={{ fontFamily: "'Outfit', sans-serif", minHeight: '100vh', background: '#0f172a', color: 'white' }}>
-        <CompanyNav companyId={companyId!} email={email} />
+        <CompanyNav companyId={companyId!} displayName={displayName} />
 
         <div style={{ maxWidth: '1100px', margin: '0 auto', padding: '40px 32px' }}>
           <div style={{ marginBottom: '32px' }}>

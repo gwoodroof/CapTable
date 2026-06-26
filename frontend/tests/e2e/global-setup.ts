@@ -17,7 +17,7 @@ export default async function globalSetup(_config: FullConfig) {
   const registerRes = await fetch(`${API}/auth/register`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, password, companyName: 'E2E Test Corp' }),
+    body: JSON.stringify({ email, password, name: 'E2E Admin', companyName: 'E2E Test Corp' }),
   });
   if (!registerRes.ok) {
     const body = await registerRes.text();
@@ -45,7 +45,7 @@ export default async function globalSetup(_config: FullConfig) {
   const payload = JSON.parse(Buffer.from(token.split('.')[1], 'base64').toString());
   fs.writeFileSync(
     path.join(AUTH_DIR, 'admin-meta.json'),
-    JSON.stringify({ email: payload.email, tenantId: payload.tenantId, role: payload.role }),
+    JSON.stringify({ email: payload.email, name: payload.name || payload.email, tenantId: payload.tenantId, role: payload.role }),
   );
 
   await browser.close();

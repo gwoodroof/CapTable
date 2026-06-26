@@ -29,7 +29,7 @@ interface ReleaseNote {
 interface Props {
   companyId: string;
   companyName?: string;
-  email: string;
+  displayName: string;
   subtitle?: string;
 }
 
@@ -54,7 +54,7 @@ async function fetchReleaseNotesFromSheet(): Promise<ReleaseNote[]> {
     .filter((r: ReleaseNote) => r.date || r.notes);
 }
 
-export default function CompanyNav({ companyId, companyName, email, subtitle }: Props) {
+export default function CompanyNav({ companyId, companyName, displayName, subtitle }: Props) {
   const router = useRouter();
   const [companies, setCompanies] = useState<Company[]>([]);
   const [open, setOpen] = useState(false);
@@ -333,7 +333,7 @@ export default function CompanyNav({ companyId, companyName, email, subtitle }: 
             onClick={() => setUserMenuOpen((o) => !o)}
             style={{ background: 'transparent', border: 'none', color: '#94a3b8', fontSize: '13px', fontWeight: 500, fontFamily: "'Outfit', sans-serif", cursor: 'pointer', padding: '4px 0' }}
           >
-            {email}
+            {displayName}
           </button>
 
           {userMenuOpen && (
@@ -451,7 +451,7 @@ export default function CompanyNav({ companyId, companyName, email, subtitle }: 
                   <p style={{ fontSize: '11px', color: '#475569', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: 600, margin: '0 0 6px 0' }}>
                     {item.date}
                   </p>
-                  <p style={{ fontSize: '14px', color: '#94a3b8', margin: 0, lineHeight: 1.6 }}>
+                  <p style={{ fontSize: '14px', color: '#94a3b8', margin: 0, lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>
                     {item.notes}
                   </p>
                 </div>

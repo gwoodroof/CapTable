@@ -6,7 +6,9 @@
       "Bash(npx next *)",
       "Bash(npm test *)",
       "Bash(npx playwright *)",
-      "Bash(npm run *)"
+      "Bash(npm run *)",
+      "Bash(npx prisma *)",
+      "Bash(npx tsc *)"
     ]
   }
 }

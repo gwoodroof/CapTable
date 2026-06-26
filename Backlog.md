@@ -1,13 +1,15 @@
 # FEATURES & ENHANCEMENTS
 
-- [ ] The user should see their own name (First Last) in the top right of the page instead of their email address. 
-- [ ] Implement full RLS
 
 # KNOWN BUGS
 
-- [ ] Release notes seem to be missing from the user menu drop down
-
 # FRONTLOG
+
+- [x] User, when creating a new company, should be given some tips about what 'Authorized Shares' are and how many is typical, and about what Par Values are and typical values. These tips should be provided by hovering over 'info' icons. Pre-fill these fields with 10,000,000 authorized shares and 0.0001 par value by default and then let the user change them if they want. Implemented: `openModal()` resets to `{ authorizedShares: '10000000', parValue: '0.0001' }`; added `InfoIcon` SVG and hover-based `tooltipVisible` state with descriptive tooltips for each field; `data-tooltip` attributes enable E2E targeting. Spec: User Story 3.13.
+
+- [x] Implement full RLS
+- [x] The user should see their own name (First Last) in the top right of the page instead of their email address. Implemented: signup form collects First/Last Name (email path); Google SSO extracts name from the ID token. `User.name` and `PendingRegistration.name` added (default ""). JWT payload now includes `name`. All nav surfaces (CompanyNav + /companies inline nav) show name with email fallback. Spec: User Story 3.12. Tests updated.
+- [x] BUG: Release notes were missing from the user menu on the /companies page. The CompanyNav component (used on all company-scoped pages) had the feature, but /companies/index.tsx had its own inline nav that omitted it. Fixed by adding the full Release Notes button + modal to the /companies inline nav. Added E2E tests in companies-list.spec.ts.
 
 - [x] We don't need the `CapTableSnapshot` model. Remove the related and unused elements so our code and repo is not cluttered.
 - [x] Add a LICENSE.md file
@@ -19,12 +21,7 @@
 - [x] Notify stakeholders (via email) of new ledger entries for which they are the identified stakeholder. 
 - [x] Admin users on the getcaptable.com/company/{id}/cap_table page should see a summary pie chart describing the current breakdown of cap table/ownership of the company. The pie chart should summarize the ownership per security type (e.g., option, preferred stock, etc.). Move the Ledger Transactions table to a separate 'Ledger' page/tab, and put the new pie chart where the ledger was before. Only Admins will have access to the Ledger page/tab, which should come right after the 'equity' page/tab. 
 - [x] Admin users should be able to update the Company name, website, and icon, all from a new page /company/{id}/company_info page/tab. Only Admins will have access to that page/tab. The Company icon should be 28px square and should show up to the right of the company name drop-down in the header up top. 
-- [x] In the header at the top of the app, instead of {username} and 'sign out' button in the top right corner, Make it just {User Name}, but when user hovers over, or clicks on that, they get a drop down to 'Contact Support' or 'Log Out'. 'Contact Support' is merely a mailto link to 'support@getcaptable.com' that opens in a new tab.  
-- [x] Enable users to be stakeholders for multiple companies. User A might create a CapTable account and THEN create Company A. Only when creating Company A will User A be asked for the Company Name, as well as the authorized shares and par value. User A might later create a completely separate Company, Company B. User A would be an Admin for both companies. User A can invite User B to become a stakeholder in Company A, or Company B, or both (but not at the same time). User B could later create their own company, and be the admin for that company. CapTable needs a getcaptable.com/companies page where users can see a list of the companies for which they ar a stakeholder and create new companies. CapTable also needs a getcaptable.com/company/{company_ID} page, where users can interact with the company IF they are a stakeholder of that company. There should be a getcaptable.com/company/{company_id}/stakeholders page which lists the stakeholders of the company. There should also be a getcaptable.com/company/{company_id}/stakeholder/{stakeholder_id} page which should replace the modal with the graph. All that same content (e.g., the graph) should be moved to this new page. When a user is is 'invited' to join a company as a stakeholder, they should receive an invite email. The 'accept invitation' button (link) in that email will verify the email address. The user should then be take to a page where they can...
-    1. a) use the already verified email address; or b) change to a new email address (which may then require verification);
-    2. Join the company to which they've been invited. 
-
-The Admin user must at least invite the stakeholder to the company before adding them to the ledger for the company. 
+- [x] In the header at the top of the app, instead of {username} and 'sign out' button in the top right corner, Make it just {User Name}, but when user hovers over, or clicks on that, they get a drop down to 'Contact Support' or 'Log Out'. 'Contact Support' is merely a mailto link to 'support@getcaptable.com' that opens in a new tab. 
 - [x] User should be able to chose between companies from a drop-down in the top left of the page. Where is currently says "My Companies / {company name}, the company name should be the drop-down. 
 - [x] Company names do not need to be unique. 2 different tenants could have the same name; the important thing is that they have unique IDs. 
 - [x] Admin users on the getcaptable.com/company/{company_id}/stakeholders page should appear like it's a tab on the company/{id} page. There, an admin should be able to see a list of all stakeholders, and upgrade other stakeholders to be additional admins for that company.

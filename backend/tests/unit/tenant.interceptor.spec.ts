@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { ForbiddenException } from '@nestjs/common';
+import { ForbiddenException, UnauthorizedException } from '@nestjs/common';
 import { TenantInterceptor } from '../../src/common/interceptors/tenant.interceptor';
 import { firstValueFrom, of } from 'rxjs';
 
@@ -34,8 +34,13 @@ describe('TenantInterceptor', () => {
     expect(() => interceptor.intercept(ctx as any, makeNext() as any)).toThrow(ForbiddenException);
   });
 
-  it('passes through when no JWT tenant is bound (unauthenticated request)', async () => {
+  it('throws UnauthorizedException when no JWT tenant is bound but a param tenantId is present', () => {
     const ctx = makeContext(undefined, 'tenant-1');
+    expect(() => interceptor.intercept(ctx as any, makeNext() as any)).toThrow(UnauthorizedException);
+  });
+
+  it('passes through when no JWT tenant is bound and no param tenantId is present (public route)', async () => {
+    const ctx = makeContext(undefined, undefined);
     const val = await firstValueFrom(interceptor.intercept(ctx as any, makeNext() as any));
     expect(val).toBe('ok');
   });

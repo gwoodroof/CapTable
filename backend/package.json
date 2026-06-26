@@ -14,7 +14,8 @@
     "format": "prettier --write \"src/**/*.ts\"",
     "prisma:migrate": "prisma migrate deploy",
     "prisma:generate": "prisma generate",
-    "prisma:seed": "ts-node prisma/seed.ts"
+    "prisma:seed": "ts-node prisma/seed.ts",
+    "db:rls": "psql $DATABASE_URL -f prisma/rls.sql"
   },
   "keywords": [
     "equity",

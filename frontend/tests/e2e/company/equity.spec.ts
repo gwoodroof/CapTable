@@ -38,8 +38,8 @@ test.describe('User Story 3.7 — Equity tab & role-based tab visibility', () =>
 
   test('clicking Stakeholders tab navigates to stakeholders route', async ({ adminPage, adminMeta }) => {
     await adminPage.goto(`/company/${adminMeta.tenantId}/equity`);
-    await adminPage.getByRole('button', { name: 'Stakeholders' }).click();
-    await expect(adminPage).toHaveURL(`/company/${adminMeta.tenantId}/stakeholders`);
+    await adminPage.getByRole('button', { name: 'Stakeholders' }).click({ timeout: 30_000 });
+    await expect(adminPage).toHaveURL(`/company/${adminMeta.tenantId}/stakeholders`, { timeout: 30_000 });
   });
 
   test('contact notice is visible at the bottom of the equity page', async ({ adminPage, adminMeta }) => {

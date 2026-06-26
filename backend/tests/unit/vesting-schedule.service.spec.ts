@@ -4,12 +4,16 @@ import { VestingScheduleService } from '../../src/modules/vesting-schedule/vesti
 
 const TENANT_ID = 'tenant-1';
 
-const makePrisma = () => ({
-  vestingSchedule: {
-    create: vi.fn(),
-    findMany: vi.fn(),
-  },
-});
+const makePrisma = () => {
+  const p = {
+    vestingSchedule: {
+      create: vi.fn(),
+      findMany: vi.fn(),
+    },
+    withTenant: vi.fn(async (_: string, fn: (tx: any) => Promise<any>) => fn(p)),
+  };
+  return p;
+};
 
 const standardSchedule = {
   name: 'Standard 4-Year',

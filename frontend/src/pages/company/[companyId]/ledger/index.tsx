@@ -56,7 +56,7 @@ export default function LedgerPage() {
 
   const [tenantName, setTenantName] = useState('');
   const [report, setReport] = useState<LedgerReport | null>(null);
-  const [email, setEmail] = useState('');
+  const [displayName, setDisplayName] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [selectedTx, setSelectedTx] = useState<Transaction | null>(null);
@@ -73,7 +73,7 @@ export default function LedgerPage() {
       return;
     }
 
-    setEmail(payload.email as string);
+    setDisplayName((payload.name as string) || (payload.email as string));
     const headers = { Authorization: `Bearer ${token}` };
 
     Promise.all([
@@ -114,7 +114,7 @@ export default function LedgerPage() {
       </Head>
 
       <div style={{ fontFamily: "'Outfit', sans-serif", minHeight: '100vh', background: '#0f172a', color: 'white' }}>
-        <CompanyNav companyId={companyId!} companyName={tenantName} email={email} />
+        <CompanyNav companyId={companyId!} companyName={tenantName} displayName={displayName} />
 
         <div style={{ maxWidth: '1100px', margin: '0 auto', padding: '40px 32px' }}>
           <div style={{ marginBottom: '32px' }}>

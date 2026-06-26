@@ -62,6 +62,8 @@ test.describe('User Story 0.1 — Email verification signup', () => {
     // over the form, blocking normal actionability checks.
     // 60s navigation timeout: Next.js compiles /signup lazily on first access in dev mode.
     await page.goto('/signup', { timeout: 60_000 });
+    await page.getByPlaceholder('Jane').fill('E2E', { force: true });
+    await page.getByPlaceholder('Smith').fill('User', { force: true });
     await page.getByPlaceholder('Acme Corp').fill('E2E Full Flow Co', { force: true });
     await page.getByPlaceholder('you@company.com').fill(email, { force: true });
     await page.getByPlaceholder('At least 8 characters').fill('TestPass1!', { force: true });

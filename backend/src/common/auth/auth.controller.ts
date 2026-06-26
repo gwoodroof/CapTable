@@ -5,6 +5,7 @@ import { AuthService } from './auth.service';
 class RegisterDto {
   email!: string;
   password!: string;
+  name!: string;
   companyName!: string;
 }
 
@@ -29,7 +30,7 @@ export class AuthController {
   @Post('register')
   @HttpCode(202)
   async register(@Body() body: RegisterDto) {
-    await this.authService.register(body.email, body.password, body.companyName);
+    await this.authService.register(body.email, body.password, body.name ?? '', body.companyName);
     return { message: 'Verification email sent. Please check your inbox to complete signup.' };
   }
 
@@ -64,7 +65,7 @@ export class AuthController {
   @HttpCode(200)
   async switchCompany(@Body() body: { tenantId: string }, @Req() req: Request) {
     if (!req.user) throw new UnauthorizedException('Authentication required');
-    const token = await this.authService.switchCompany(req.user.sub, req.user.email, body.tenantId);
+    const token = await this.authService.switchCompany(req.user.sub, req.user.email, req.user.name ?? '', body.tenantId);
     return { token };
   }
 }

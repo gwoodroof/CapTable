@@ -5,7 +5,7 @@
  * another tenant — the core security invariant of the system.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { BadRequestException, ForbiddenException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, UnauthorizedException } from '@nestjs/common';
 import { LedgerService } from '../../src/modules/ledger/ledger.service';
 import { StakeholderService } from '../../src/modules/stakeholder/stakeholder.service';
 import { GrantService } from '../../src/modules/grant/grant.service';
@@ -15,33 +15,37 @@ import { firstValueFrom, of } from 'rxjs';
 const T1 = 'tenant-1';
 const T2 = 'tenant-2';
 
-const makePrisma = () => ({
-  tenant: {
-    findUnique: vi.fn().mockImplementation(({ where: { id } }) =>
-      Promise.resolve(id === T1 ? { id: T1 } : null),
-    ),
-  },
-  stakeholder: {
-    findUnique: vi.fn(),
-    findMany: vi.fn(),
-    create: vi.fn(),
-  },
-  security: {
-    findUnique: vi.fn(),
-  },
-  vestingSchedule: {
-    findUnique: vi.fn(),
-  },
-  grant: {
-    create: vi.fn(),
-    findMany: vi.fn(),
-  },
-  ledgerTransaction: {
-    findFirst: vi.fn().mockResolvedValue(null),
-    findMany: vi.fn().mockResolvedValue([]),
-    create: vi.fn().mockResolvedValue({ id: 'tx-1', dataHash: 'dh', previousRowHash: null, chainHash: 'ch' }),
-  },
-});
+const makePrisma = () => {
+  const p = {
+    tenant: {
+      findUnique: vi.fn().mockImplementation(({ where: { id } }) =>
+        Promise.resolve(id === T1 ? { id: T1 } : null),
+      ),
+    },
+    stakeholder: {
+      findUnique: vi.fn(),
+      findMany: vi.fn(),
+      create: vi.fn(),
+    },
+    security: {
+      findUnique: vi.fn(),
+    },
+    vestingSchedule: {
+      findUnique: vi.fn(),
+    },
+    grant: {
+      create: vi.fn(),
+      findMany: vi.fn(),
+    },
+    ledgerTransaction: {
+      findFirst: vi.fn().mockResolvedValue(null),
+      findMany: vi.fn().mockResolvedValue([]),
+      create: vi.fn().mockResolvedValue({ id: 'tx-1', dataHash: 'dh', previousRowHash: null, chainHash: 'ch' }),
+    },
+    withTenant: vi.fn(async (_: string, fn: (tx: any) => Promise<any>) => fn(p)),
+  };
+  return p;
+};
 
 describe('Security: Tenant Isolation', () => {
   let prisma: ReturnType<typeof makePrisma>;
@@ -178,6 +182,15 @@ describe('Security: Tenant Isolation', () => {
       };
       const v = await firstValueFrom(interceptor.intercept(ctx as any, next as any));
       expect(v).toBe('ok');
+    });
+
+    it('blocks an unauthenticated request that supplies a param tenantId', () => {
+      const ctx = {
+        switchToHttp: () => ({
+          getRequest: () => ({ tenantId: undefined, params: { tenantId: T1 } }),
+        }),
+      };
+      expect(() => interceptor.intercept(ctx as any, next as any)).toThrow(UnauthorizedException);
     });
 
     it('allows a request with no param tenantId (non-tenant-scoped route)', async () => {

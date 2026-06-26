@@ -17,7 +17,7 @@ const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1';
 
 export default function Signup() {
   const router = useRouter();
-  const [form, setForm] = useState({ companyName: '', email: '', password: '', confirm: '' });
+  const [form, setForm] = useState({ companyName: '', firstName: '', lastName: '', email: '', password: '', confirm: '' });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [verificationSent, setVerificationSent] = useState(false);
@@ -78,10 +78,11 @@ export default function Signup() {
           setError('Password must be at least 8 characters');
           return;
         }
+        const name = `${form.firstName.trim()} ${form.lastName.trim()}`.trim();
         const res = await fetch(`${API}/auth/register`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: form.email, password: form.password, companyName: form.companyName }),
+          body: JSON.stringify({ email: form.email, password: form.password, name, companyName: form.companyName }),
         });
         const data = await res.json();
         if (!res.ok) {
@@ -222,6 +223,31 @@ export default function Signup() {
                 </div>
 
                 <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                    <div>
+                      <label style={labelStyle}>First Name</label>
+                      <input
+                        type="text"
+                        required
+                        value={form.firstName}
+                        onChange={(e) => set('firstName', e.target.value)}
+                        placeholder="Jane"
+                        style={inputStyle}
+                      />
+                    </div>
+                    <div>
+                      <label style={labelStyle}>Last Name</label>
+                      <input
+                        type="text"
+                        required
+                        value={form.lastName}
+                        onChange={(e) => set('lastName', e.target.value)}
+                        placeholder="Smith"
+                        style={inputStyle}
+                      />
+                    </div>
+                  </div>
+
                   <div>
                     <label style={labelStyle}>Company Name</label>
                     <input

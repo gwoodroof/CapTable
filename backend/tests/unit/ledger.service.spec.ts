@@ -8,16 +8,20 @@ const TENANT_ID = 'tenant-abc';
 const STAKEHOLDER_ID = 'sh-1';
 const SECURITY_ID = 'sec-1';
 
-const makePrisma = () => ({
-  tenant: { findUnique: vi.fn() },
-  stakeholder: { findUnique: vi.fn() },
-  security: { findUnique: vi.fn() },
-  ledgerTransaction: {
-    findFirst: vi.fn(),
-    findMany: vi.fn(),
-    create: vi.fn(),
-  },
-});
+const makePrisma = () => {
+  const p = {
+    tenant: { findUnique: vi.fn() },
+    stakeholder: { findUnique: vi.fn() },
+    security: { findUnique: vi.fn() },
+    ledgerTransaction: {
+      findFirst: vi.fn(),
+      findMany: vi.fn(),
+      create: vi.fn(),
+    },
+    withTenant: vi.fn(async (_: string, fn: (tx: any) => Promise<any>) => fn(p)),
+  };
+  return p;
+};
 
 const makeEmailService = () => ({
   sendLedgerNotification: vi.fn().mockResolvedValue(undefined),

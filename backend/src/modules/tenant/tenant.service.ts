@@ -57,10 +57,12 @@ export class TenantService {
 
   async getTenantStakeholders(tenantId: string) {
     const [stakeholders, memberships] = await Promise.all([
-      this.prisma.stakeholder.findMany({
-        where: { tenantId },
-        orderBy: { createdAt: 'desc' },
-      }),
+      this.prisma.withTenant(tenantId, (tx) =>
+        tx.stakeholder.findMany({
+          where: { tenantId },
+          orderBy: { createdAt: 'desc' },
+        }),
+      ),
       this.prisma.companyMembership.findMany({
         where: { tenantId },
         include: { user: { select: { id: true, email: true } } },
@@ -133,12 +135,14 @@ export class TenantService {
    * Get total issued shares for a tenant (sum of all non-cancelled issuances)
    */
   async getTotalIssuedShares(tenantId: string): Promise<Decimal> {
-    const entries = await this.prisma.ledgerTransaction.findMany({
-      where: {
-        tenantId,
-        transactionType: { in: ['ISSUANCE', 'VEST'] },
-      },
-    });
+    const entries = await this.prisma.withTenant(tenantId, (tx) =>
+      tx.ledgerTransaction.findMany({
+        where: {
+          tenantId,
+          transactionType: { in: ['ISSUANCE', 'VEST'] },
+        },
+      }),
+    );
 
     return PrecisionMath.sum(entries.map((e) => e.quantity));
   }

@@ -28,21 +28,25 @@ export class VestingScheduleService {
       throw new BadRequestException('cliffMonths cannot exceed vestingDurationMonths');
     }
 
-    return this.prisma.vestingSchedule.create({
-      data: {
-        name: data.name.trim(),
-        cliffMonths: data.cliffMonths,
-        vestingDurationMonths: data.vestingDurationMonths,
-        vestingFrequency: data.vestingFrequency,
-        tenantId,
-      },
-    });
+    return this.prisma.withTenant(tenantId, (tx) =>
+      tx.vestingSchedule.create({
+        data: {
+          name: data.name.trim(),
+          cliffMonths: data.cliffMonths,
+          vestingDurationMonths: data.vestingDurationMonths,
+          vestingFrequency: data.vestingFrequency,
+          tenantId,
+        },
+      }),
+    );
   }
 
   async listVestingSchedules(tenantId: string) {
-    return this.prisma.vestingSchedule.findMany({
-      where: { tenantId },
-      orderBy: { createdAt: 'desc' },
-    });
+    return this.prisma.withTenant(tenantId, (tx) =>
+      tx.vestingSchedule.findMany({
+        where: { tenantId },
+        orderBy: { createdAt: 'desc' },
+      }),
+    );
   }
 }

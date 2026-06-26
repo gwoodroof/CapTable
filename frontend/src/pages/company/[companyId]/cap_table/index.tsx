@@ -112,7 +112,7 @@ export default function CapTableDashboard() {
 
   const [tenant, setTenant] = useState<Tenant | null>(null);
   const [report, setReport] = useState<LedgerReport | null>(null);
-  const [email, setEmail] = useState('');
+  const [displayName, setDisplayName] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -128,7 +128,7 @@ export default function CapTableDashboard() {
       return;
     }
 
-    setEmail(payload.email as string);
+    setDisplayName((payload.name as string) || (payload.email as string));
     const headers = { Authorization: `Bearer ${token}` };
 
     Promise.all([
@@ -171,7 +171,7 @@ export default function CapTableDashboard() {
       </Head>
 
       <div style={{ fontFamily: "'Outfit', sans-serif", minHeight: '100vh', background: '#0f172a', color: 'white' }}>
-        <CompanyNav companyId={companyId!} companyName={tenant?.name ?? ''} email={email} />
+        <CompanyNav companyId={companyId!} companyName={tenant?.name ?? ''} displayName={displayName} />
 
         <div style={{ maxWidth: '1100px', margin: '0 auto', padding: '40px 32px' }}>
           {/* Page title + actions */}

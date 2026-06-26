@@ -191,7 +191,7 @@ export default function StakeholderEquity() {
   const { companyId, stakeholderId } = router.query as { companyId?: string; stakeholderId?: string };
 
   const [summary, setSummary] = useState<Summary | null>(null);
-  const [email, setEmail] = useState('');
+  const [displayName, setDisplayName] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -205,7 +205,7 @@ export default function StakeholderEquity() {
       router.replace(`/company/${companyId}/equity`);
       return;
     }
-    setEmail(payload.email as string);
+    setDisplayName((payload.name as string) || (payload.email as string));
 
     fetch(`${API}/stakeholders/${stakeholderId}/summary`, {
       headers: { Authorization: `Bearer ${token}` },
@@ -247,7 +247,7 @@ export default function StakeholderEquity() {
       </Head>
 
       <div style={{ fontFamily: "'Outfit', sans-serif", minHeight: '100vh', background: '#0f172a', color: 'white' }}>
-        <CompanyNav companyId={companyId!} email={email} subtitle={stakeholder.name} />
+        <CompanyNav companyId={companyId!} displayName={displayName} subtitle={stakeholder.name} />
 
         <div style={{ maxWidth: '900px', margin: '0 auto', padding: '40px 32px' }}>
           {/* Stakeholder header */}

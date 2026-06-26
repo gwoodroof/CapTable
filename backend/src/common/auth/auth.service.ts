@@ -11,6 +11,7 @@ export interface JWTPayload {
   tenantId: string;
   role: string;
   email: string;
+  name: string;
 }
 
 const VERIFICATION_TOKEN_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
@@ -25,8 +26,8 @@ export class AuthService {
     private emailService: EmailService,
   ) {}
 
-  async generateToken(userId: string, tenantId: string, email: string, role: string): Promise<string> {
-    const payload: JWTPayload = { sub: userId, tenantId, email, role };
+  async generateToken(userId: string, tenantId: string, email: string, role: string, name = ''): Promise<string> {
+    const payload: JWTPayload = { sub: userId, tenantId, email, role, name };
     return this.jwtService.sign(payload);
   }
 
@@ -47,7 +48,7 @@ export class AuthService {
     }
   }
 
-  async register(email: string, password: string, companyName: string): Promise<void> {
+  async register(email: string, password: string, name: string, companyName: string): Promise<void> {
     const existingUser = await this.prisma.user.findUnique({ where: { email } });
     if (existingUser) {
       throw new ConflictException('Email already registered');
@@ -60,8 +61,8 @@ export class AuthService {
     // Upsert so a repeated signup attempt before verification refreshes the token
     await this.prisma.pendingRegistration.upsert({
       where: { email },
-      update: { passwordHash, companyName, token, expiresAt },
-      create: { email, passwordHash, companyName, token, expiresAt },
+      update: { passwordHash, name, companyName, token, expiresAt },
+      create: { email, passwordHash, name, companyName, token, expiresAt },
     });
 
     await this.emailService.sendEmailVerification(email, token);
@@ -97,6 +98,7 @@ export class AuthService {
       data: {
         email: pending.email,
         passwordHash: pending.passwordHash,
+        name: pending.name,
         role: 'ADMIN',
         tenantId: tenant.id,
       },
@@ -108,7 +110,7 @@ export class AuthService {
 
     await this.prisma.pendingRegistration.delete({ where: { token } });
 
-    return this.generateToken(user.id, tenant.id, pending.email, 'ADMIN');
+    return this.generateToken(user.id, tenant.id, pending.email, 'ADMIN', pending.name);
   }
 
   async login(email: string, password: string): Promise<string> {
@@ -118,15 +120,15 @@ export class AuthService {
     const valid = await bcrypt.compare(password, user.passwordHash);
     if (!valid) throw new UnauthorizedException('Invalid credentials');
 
-    return this.generateToken(user.id, user.tenantId, email, user.role);
+    return this.generateToken(user.id, user.tenantId, email, user.role, user.name);
   }
 
   async googleAuth(credential: string): Promise<{ token?: string; isNew: boolean; email?: string }> {
-    const email = await this.verifyGoogleCredential(credential);
+    const { email, name } = await this.verifyGoogleCredential(credential);
     const user = await this.prisma.user.findUnique({ where: { email } });
 
     if (user) {
-      const token = await this.generateToken(user.id, user.tenantId, email, user.role);
+      const token = await this.generateToken(user.id, user.tenantId, email, user.role, user.name || name);
       return { token, isNew: false };
     }
 
@@ -134,11 +136,11 @@ export class AuthService {
   }
 
   async googleRegister(credential: string, companyName: string): Promise<string> {
-    const email = await this.verifyGoogleCredential(credential);
+    const { email, name } = await this.verifyGoogleCredential(credential);
 
     const existing = await this.prisma.user.findUnique({ where: { email } });
     if (existing) {
-      return this.generateToken(existing.id, existing.tenantId, email, existing.role);
+      return this.generateToken(existing.id, existing.tenantId, email, existing.role, existing.name || name);
     }
 
     const tenant = await this.prisma.tenant.create({
@@ -153,33 +155,33 @@ export class AuthService {
     const passwordHash = await bcrypt.hash(crypto.randomUUID(), 12);
 
     const user = await this.prisma.user.create({
-      data: { email, passwordHash, role: 'ADMIN', tenantId: tenant.id },
+      data: { email, passwordHash, name, role: 'ADMIN', tenantId: tenant.id },
     });
 
     await this.prisma.companyMembership.create({
       data: { userId: user.id, tenantId: tenant.id, role: 'ADMIN' },
     });
 
-    return this.generateToken(user.id, tenant.id, email, 'ADMIN');
+    return this.generateToken(user.id, tenant.id, email, 'ADMIN', name);
   }
 
-  async switchCompany(userId: string, email: string, targetTenantId: string): Promise<string> {
+  async switchCompany(userId: string, email: string, name: string, targetTenantId: string): Promise<string> {
     const membership = await this.prisma.companyMembership.findUnique({
       where: { userId_tenantId: { userId, tenantId: targetTenantId } },
     });
     if (!membership) {
       throw new ForbiddenException('You are not a member of this company');
     }
-    return this.generateToken(userId, targetTenantId, email, membership.role);
+    return this.generateToken(userId, targetTenantId, email, membership.role, name);
   }
 
-  private async verifyGoogleCredential(credential: string): Promise<string> {
+  private async verifyGoogleCredential(credential: string): Promise<{ email: string; name: string }> {
     const ticket = await this.googleClient.verifyIdToken({
       idToken: credential,
       audience: process.env.GOOGLE_CLIENT_ID,
     });
     const payload = ticket.getPayload();
     if (!payload?.email) throw new UnauthorizedException('Invalid Google token');
-    return payload.email;
+    return { email: payload.email, name: payload.name ?? '' };
   }
 }

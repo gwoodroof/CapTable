@@ -11,15 +11,19 @@ export class SecurityService {
       throw new BadRequestException('Security name is required');
     }
 
-    return this.prisma.security.create({
-      data: { name: data.name.trim(), type: data.type, tenantId },
-    });
+    return this.prisma.withTenant(tenantId, (tx) =>
+      tx.security.create({
+        data: { name: data.name.trim(), type: data.type, tenantId },
+      }),
+    );
   }
 
   async listSecurities(tenantId: string) {
-    return this.prisma.security.findMany({
-      where: { tenantId },
-      orderBy: { createdAt: 'desc' },
-    });
+    return this.prisma.withTenant(tenantId, (tx) =>
+      tx.security.findMany({
+        where: { tenantId },
+        orderBy: { createdAt: 'desc' },
+      }),
+    );
   }
 }

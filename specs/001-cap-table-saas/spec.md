@@ -224,6 +224,52 @@
 
 ---
 
+### User Story 3.12 - Display User Name in Navigation (Priority: P2)
+
+**As a** logged-in user, **I want to** see my full name (First Last) in the top-right navigation bar instead of my email address, **so that** the interface feels personal and professional.
+
+**Why this priority**: Minor UX polish; enhances trust and recognition.
+
+**Independent Test**: Sign up with a First Name and Last Name via the email/password flow. After verifying and logging in, confirm the nav bar shows the full name (not the email address). For Google SSO, confirm the name comes from the Google token automatically.
+
+**Acceptance Scenarios**:
+1. **Given** a new user signing up with email/password, **When** they fill in First Name and Last Name on the signup form and complete verification, **Then** their full name is stored on the `User` record and embedded in the JWT payload.
+2. **Given** a logged-in user, **When** they view any authenticated page (companies list or any company-scoped page), **Then** the navigation bar displays their full name, not their email address.
+3. **Given** a Google SSO signup, **When** completing registration, **Then** the name from the Google ID token is automatically stored and displayed without requiring an extra form field.
+4. **Given** a user whose name is an empty string (legacy account or account with no name set), **When** they view any authenticated page, **Then** the navigation bar falls back to displaying their email address.
+5. **Given** a user switches companies via the company switcher, **When** a new JWT is issued by `POST /auth/switch-company`, **Then** the new token still includes the user's name so the nav continues to display the correct name.
+
+**Key Implementation Notes**:
+- `User.name` and `PendingRegistration.name` both use `@default("")` so existing rows are unaffected by the migration.
+- The JWT payload includes a `name` field alongside `sub`, `tenantId`, `email`, and `role`.
+- The signup form collects First Name and Last Name as two separate inputs and concatenates them as `"${firstName} ${lastName}"` before sending to the API.
+- Google SSO extracts the full name from `getPayload().name` on the Google ID token.
+- All nav surfaces (`CompanyNav` component and the inline nav on `/companies`) fall back to email when `name` is empty.
+
+---
+
+### User Story 3.13 - Create Company Form: Defaults & Field Tips (Priority: P2)
+
+**As a** user creating a new company, **I want to** see helpful tips about Authorized Shares and Par Value, and have sensible defaults pre-filled, **so that** I can make an informed decision without needing to research these fields independently.
+
+**Why this priority**: Reduces friction for first-time company creators who are unfamiliar with standard startup cap table values.
+
+**Independent Test**: Open the "Create a new company" modal. Confirm the Authorized Shares field defaults to 10,000,000 and Par Value defaults to 0.0001. Hover over the info icon next to each field and confirm a descriptive tooltip appears.
+
+**Acceptance Scenarios**:
+1. **Given** the user clicks "+ Create Company", **When** the modal opens, **Then** the Authorized Shares input is pre-filled with `10000000` and the Par Value input is pre-filled with `0.0001`.
+2. **Given** the modal is open, **When** the user hovers over the info icon next to "Authorized Shares", **Then** a tooltip appears explaining that most startups authorize 10,000,000 shares for flexibility.
+3. **Given** the modal is open, **When** the user hovers over the info icon next to "Par Value", **Then** a tooltip appears explaining that $0.0001 is typical for Delaware startups to minimize franchise taxes.
+4. **Given** the user changes the pre-filled values before submitting, **When** the form is submitted, **Then** the user-specified values (not the defaults) are used to create the company.
+5. **Given** the user cancels and reopens the modal, **When** the modal opens again, **Then** the default values are restored.
+
+**Key Implementation Notes**:
+- `openModal()` resets the form to `{ name: '', authorizedShares: '10000000', parValue: '0.0001' }` each time it is called.
+- Info icons use an SVG circle-i design and reveal tooltips on `mouseenter`/`mouseleave` via a `tooltipVisible` state variable.
+- Tooltip for Par Value anchors to the right edge to prevent overflow off the right side of the modal.
+
+---
+
 ### User Story 3.11 - Release Notes in User Menu (Priority: P2)
 
 **As a** logged-in user, **I want to** see a "Release Notes" option in the user dropdown, **so that** I can read what has changed in the product without leaving the app.
@@ -437,7 +483,7 @@ After every test run, `global-teardown.ts` deletes all users, tenants, and assoc
 | File | User Stories | Scope |
 |------|-------------|-------|
 | `auth/signup.spec.ts` | 0.1 | Register returns 202; duplicate email returns 409; invalid token returns 400; full browser flow: register → Maildrop poll → verify link → `/companies` with token stored |
-| `companies/companies-list.spec.ts` | 3.1, 0.2 | Unauthenticated redirect to `/login`; company card visible after login; create company modal; zero-shares validation |
+| `companies/companies-list.spec.ts` | 3.1, 0.2, 3.11 | Unauthenticated redirect to `/login`; company card visible after login; create company modal; zero-shares validation; Release Notes option in user menu on /companies; modal opens and closes |
 | `company/nav.spec.ts` | 3.5, 3.8, 3.9, 3.11 | User menu opens on click; Log Out clears token and redirects to `/login`; dropdown closes on outside click; company switcher shows checkmark on current company and "+ All companies" link; Release Notes modal opens and closes; monogram shows first letter when no icon is set |
 | `company/stakeholders.spec.ts` | 3.6 | Stakeholders tab navigation; ADMIN badge visible for founding user; all five tabs visible to admin |
 | `company/equity.spec.ts` | 3.7 | Admin sees all five tabs; `/company/:id` redirects admin to `cap_table`; empty equity state when no Stakeholder record |

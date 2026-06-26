@@ -29,7 +29,7 @@ export default function CompanyInfoPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [tenant, setTenant] = useState<Tenant | null>(null);
-  const [email, setEmail] = useState('');
+  const [displayName, setDisplayName] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -52,7 +52,7 @@ export default function CompanyInfoPage() {
       return;
     }
 
-    setEmail(payload.email as string);
+    setDisplayName((payload.name as string) || (payload.email as string));
 
     fetch(`${API}/tenants/${companyId}`, { headers: { Authorization: `Bearer ${token}` } })
       .then((r) => (r.ok ? r.json() : null))
@@ -173,7 +173,7 @@ export default function CompanyInfoPage() {
       </Head>
 
       <div style={{ fontFamily: "'Outfit', sans-serif", minHeight: '100vh', background: '#0f172a', color: 'white' }}>
-        <CompanyNav companyId={companyId!} companyName={tenant?.name ?? ''} email={email} />
+        <CompanyNav companyId={companyId!} companyName={tenant?.name ?? ''} displayName={displayName} />
 
         <div style={{ maxWidth: '1100px', margin: '0 auto', padding: '40px 32px' }}>
           <div style={{ marginBottom: '32px' }}>

@@ -53,7 +53,7 @@ export default function StakeholdersList() {
 
   const [stakeholders, setStakeholders] = useState<StakeholderRow[]>([]);
   const [tenantName, setTenantName] = useState('');
-  const [email, setEmail] = useState('');
+  const [displayName, setDisplayName] = useState('');
   const [isAdmin, setIsAdmin] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -71,7 +71,7 @@ export default function StakeholdersList() {
       return;
     }
 
-    setEmail(payload.email as string);
+    setDisplayName((payload.name as string) || (payload.email as string));
     setIsAdmin(true);
 
     const headers = { Authorization: `Bearer ${token}` };
@@ -135,7 +135,7 @@ export default function StakeholdersList() {
       </Head>
 
       <div style={{ fontFamily: "'Outfit', sans-serif", minHeight: '100vh', background: '#0f172a', color: 'white' }}>
-        <CompanyNav companyId={companyId!} companyName={tenantName} email={email} />
+        <CompanyNav companyId={companyId!} companyName={tenantName} displayName={displayName} />
 
         <div style={{ maxWidth: '1100px', margin: '0 auto', padding: '40px 32px' }}>
           {/* Page title */}

@@ -4,11 +4,11 @@
 import { test, expect } from '../fixtures';
 
 test.describe('User Story 3.8 — User menu dropdown', () => {
-  test('hovering the email opens a dropdown with Log Out and Contact Support', async ({ adminPage, adminMeta }) => {
+  test('hovering the user name opens a dropdown with Log Out and Contact Support', async ({ adminPage, adminMeta }) => {
     await adminPage.goto(`/company/${adminMeta.tenantId}/cap_table`);
 
     // The user menu opens on hover (onMouseEnter); clicking toggles which can close it on mouseenter+click
-    await adminPage.getByRole('button', { name: adminMeta.email }).hover();
+    await adminPage.getByRole('button', { name: adminMeta.name }).hover();
 
     await expect(adminPage.getByRole('button', { name: 'Log Out' })).toBeVisible();
     await expect(adminPage.getByText('Contact Support')).toBeVisible();
@@ -17,7 +17,7 @@ test.describe('User Story 3.8 — User menu dropdown', () => {
   test('Log Out clears the token and redirects to /login', async ({ adminPage, adminMeta }) => {
     await adminPage.goto(`/company/${adminMeta.tenantId}/cap_table`);
 
-    await adminPage.getByRole('button', { name: adminMeta.email }).hover();
+    await adminPage.getByRole('button', { name: adminMeta.name }).hover();
     await adminPage.getByRole('button', { name: 'Log Out' }).click();
 
     await expect(adminPage).toHaveURL(/\/login/);
@@ -28,7 +28,7 @@ test.describe('User Story 3.8 — User menu dropdown', () => {
   test('dropdown closes when clicking outside', async ({ adminPage, adminMeta }) => {
     await adminPage.goto(`/company/${adminMeta.tenantId}/cap_table`);
 
-    await adminPage.getByRole('button', { name: adminMeta.email }).hover();
+    await adminPage.getByRole('button', { name: adminMeta.name }).hover();
     await expect(adminPage.getByRole('button', { name: 'Log Out' })).toBeVisible();
 
     // Move mouse far away to trigger the close timer (onMouseLeave + 150ms delay)
@@ -40,13 +40,13 @@ test.describe('User Story 3.8 — User menu dropdown', () => {
 test.describe('User Story 3.11 — Release Notes modal', () => {
   test('Release Notes option appears in the user menu', async ({ adminPage, adminMeta }) => {
     await adminPage.goto(`/company/${adminMeta.tenantId}/cap_table`);
-    await adminPage.getByRole('button', { name: adminMeta.email }).hover();
+    await adminPage.getByRole('button', { name: adminMeta.name }).hover();
     await expect(adminPage.getByTestId('release-notes-menu-item')).toBeVisible();
   });
 
   test('clicking Release Notes opens a modal with the heading', async ({ adminPage, adminMeta }) => {
     await adminPage.goto(`/company/${adminMeta.tenantId}/cap_table`);
-    await adminPage.getByRole('button', { name: adminMeta.email }).hover();
+    await adminPage.getByRole('button', { name: adminMeta.name }).hover();
     await adminPage.getByTestId('release-notes-menu-item').click();
     await expect(adminPage.getByTestId('release-notes-modal')).toBeVisible();
     await expect(adminPage.getByRole('heading', { name: 'Release Notes' })).toBeVisible();
@@ -54,7 +54,7 @@ test.describe('User Story 3.11 — Release Notes modal', () => {
 
   test('Release Notes modal closes on × button click', async ({ adminPage, adminMeta }) => {
     await adminPage.goto(`/company/${adminMeta.tenantId}/cap_table`);
-    await adminPage.getByRole('button', { name: adminMeta.email }).hover();
+    await adminPage.getByRole('button', { name: adminMeta.name }).hover();
     await adminPage.getByTestId('release-notes-menu-item').click();
     await expect(adminPage.getByTestId('release-notes-modal')).toBeVisible();
     await adminPage.getByTestId('release-notes-close').click();
@@ -63,7 +63,7 @@ test.describe('User Story 3.11 — Release Notes modal', () => {
 
   test('Release Notes modal closes on backdrop click', async ({ adminPage, adminMeta }) => {
     await adminPage.goto(`/company/${adminMeta.tenantId}/cap_table`);
-    await adminPage.getByRole('button', { name: adminMeta.email }).hover();
+    await adminPage.getByRole('button', { name: adminMeta.name }).hover();
     await adminPage.getByTestId('release-notes-menu-item').click();
     await expect(adminPage.getByTestId('release-notes-modal')).toBeVisible();
     // Click the backdrop (outside the modal panel)
@@ -87,6 +87,7 @@ test.describe('User Story 3.9 — Company monogram fallback', () => {
 test.describe('User Story 3.5 — Company switcher dropdown', () => {
   test('clicking the company name opens the switcher with a checkmark on the current company', async ({ adminPage, adminMeta }) => {
     await adminPage.goto(`/company/${adminMeta.tenantId}/cap_table`);
+    await expect(adminPage.getByRole('heading', { name: 'Cap Table Dashboard' })).toBeVisible({ timeout: 30_000 });
 
     // Click the company switcher button (contains company name + ▾ arrow)
     await adminPage.getByRole('button', { name: /E2E Test Corp/ }).first().click();
@@ -98,6 +99,7 @@ test.describe('User Story 3.5 — Company switcher dropdown', () => {
 
   test('switcher shows "+ All companies" link', async ({ adminPage, adminMeta }) => {
     await adminPage.goto(`/company/${adminMeta.tenantId}/cap_table`);
+    await expect(adminPage.getByRole('heading', { name: 'Cap Table Dashboard' })).toBeVisible({ timeout: 30_000 });
 
     await adminPage.getByRole('button', { name: /E2E Test Corp/ }).first().click();
     await expect(adminPage.getByText('+ All companies')).toBeVisible();
@@ -105,6 +107,7 @@ test.describe('User Story 3.5 — Company switcher dropdown', () => {
 
   test('"+ All companies" link navigates to /companies', async ({ adminPage, adminMeta }) => {
     await adminPage.goto(`/company/${adminMeta.tenantId}/cap_table`);
+    await expect(adminPage.getByRole('heading', { name: 'Cap Table Dashboard' })).toBeVisible({ timeout: 30_000 });
 
     await adminPage.getByRole('button', { name: /E2E Test Corp/ }).first().click();
     await adminPage.getByRole('button', { name: '+ All companies' }).click();

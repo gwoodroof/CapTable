@@ -4,7 +4,7 @@ import fs from 'fs';
 
 const AUTH_DIR = path.join(__dirname, '../.auth');
 
-type AdminMeta = { email: string; tenantId: string; role: string };
+type AdminMeta = { email: string; name: string; tenantId: string; role: string };
 
 type AuthFixtures = {
   adminPage: import('@playwright/test').Page;

@@ -6,25 +6,29 @@ import { TenantService } from '../../src/modules/tenant/tenant.service';
 const TENANT_ID = 'tenant-1';
 const USER_ID = 'user-1';
 
-const makePrisma = () => ({
-  tenant: {
-    findUnique: vi.fn(),
-    create: vi.fn(),
-    update: vi.fn(),
-  },
-  ledgerTransaction: {
-    findMany: vi.fn(),
-  },
-  companyMembership: {
-    create: vi.fn(),
-    findMany: vi.fn(),
-    findUnique: vi.fn(),
-    update: vi.fn(),
-  },
-  stakeholder: {
-    findMany: vi.fn(),
-  },
-});
+const makePrisma = () => {
+  const p = {
+    tenant: {
+      findUnique: vi.fn(),
+      create: vi.fn(),
+      update: vi.fn(),
+    },
+    ledgerTransaction: {
+      findMany: vi.fn(),
+    },
+    companyMembership: {
+      create: vi.fn(),
+      findMany: vi.fn(),
+      findUnique: vi.fn(),
+      update: vi.fn(),
+    },
+    stakeholder: {
+      findMany: vi.fn(),
+    },
+    withTenant: vi.fn(async (_: string, fn: (tx: any) => Promise<any>) => fn(p)),
+  };
+  return p;
+};
 
 const makeLedgerService = () => ({
   getStakeholderBalance: vi.fn(),

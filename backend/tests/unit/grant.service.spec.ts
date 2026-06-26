@@ -8,15 +8,19 @@ const SEC_ID = 'sec-1';
 const VS_ID = 'vs-1';
 const USER_ID = 'user-1';
 
-const makePrisma = () => ({
-  stakeholder: { findUnique: vi.fn() },
-  security: { findUnique: vi.fn() },
-  vestingSchedule: { findUnique: vi.fn() },
-  grant: {
-    create: vi.fn(),
-    findMany: vi.fn(),
-  },
-});
+const makePrisma = () => {
+  const p = {
+    stakeholder: { findUnique: vi.fn() },
+    security: { findUnique: vi.fn() },
+    vestingSchedule: { findUnique: vi.fn() },
+    grant: {
+      create: vi.fn(),
+      findMany: vi.fn(),
+    },
+    withTenant: vi.fn(async (_: string, fn: (tx: any) => Promise<any>) => fn(p)),
+  };
+  return p;
+};
 
 const makeLedgerService = () => ({
   recordTransaction: vi.fn(),

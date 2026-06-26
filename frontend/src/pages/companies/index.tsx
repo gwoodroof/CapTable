@@ -3,6 +3,33 @@ import Head from 'next/head';
 import { useRouter } from 'next/router';
 
 const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1';
+const RELEASE_NOTES_SHEET_ID = '1Ht3pQQUXwt7-r0PY1G0Xdxobb-baFWO3yayC_l8nFsU';
+
+interface ReleaseNote {
+  date: string;
+  notes: string;
+}
+
+function cellStr(cell: { v?: unknown; f?: string } | null | undefined): string {
+  if (!cell) return '';
+  if (typeof cell.f === 'string') return cell.f;
+  if (typeof cell.v === 'string') return cell.v;
+  return '';
+}
+
+async function fetchReleaseNotesFromSheet(): Promise<ReleaseNote[]> {
+  const url = `https://docs.google.com/spreadsheets/d/${RELEASE_NOTES_SHEET_ID}/gviz/tq?tqx=out:json`;
+  const res = await fetch(url);
+  const text = await res.text();
+  const jsonStr = text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1);
+  const data = JSON.parse(jsonStr);
+  return (data.table?.rows ?? [])
+    .map((row: { c: Array<{ v?: unknown; f?: string } | null> }) => ({
+      date: cellStr(row.c?.[0]),
+      notes: cellStr(row.c?.[1]),
+    }))
+    .filter((r: ReleaseNote) => r.date || r.notes);
+}
 
 function decodeJwt(token: string): Record<string, unknown> | null {
   try {
@@ -50,10 +77,14 @@ function formatNumber(val: string | number) {
 export default function Companies() {
   const router = useRouter();
   const [companies, setCompanies] = useState<Company[]>([]);
-  const [email, setEmail] = useState('');
+  const [displayName, setDisplayName] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [releaseNotesOpen, setReleaseNotesOpen] = useState(false);
+  const [releaseNotes, setReleaseNotes] = useState<ReleaseNote[] | null>(null);
+  const [releaseNotesLoading, setReleaseNotesLoading] = useState(false);
+  const [releaseNotesError, setReleaseNotesError] = useState('');
   const userMenuRef = useRef<HTMLDivElement>(null);
   const userMenuCloseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -68,9 +99,10 @@ export default function Companies() {
 
   // Create company modal state
   const [showModal, setShowModal] = useState(false);
-  const [form, setForm] = useState({ name: '', authorizedShares: '', parValue: '' });
+  const [form, setForm] = useState({ name: '', authorizedShares: '10000000', parValue: '0.0001' });
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState('');
+  const [tooltipVisible, setTooltipVisible] = useState<'shares' | 'par' | null>(null);
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -88,7 +120,7 @@ export default function Companies() {
     const payload = decodeJwt(token);
     if (!payload) { router.replace('/login'); return; }
 
-    setEmail(payload.email as string);
+    setDisplayName((payload.name as string) || (payload.email as string));
     const headers = { Authorization: `Bearer ${token}` };
     const tenantId = payload.tenantId as string | undefined;
 
@@ -109,6 +141,18 @@ export default function Companies() {
       .catch(() => setError('Failed to load companies'))
       .finally(() => setLoading(false));
   }, [router]);
+
+  function openReleaseNotes() {
+    setUserMenuOpen(false);
+    setReleaseNotesOpen(true);
+    if (releaseNotes !== null) return;
+    setReleaseNotesLoading(true);
+    setReleaseNotesError('');
+    fetchReleaseNotesFromSheet()
+      .then(setReleaseNotes)
+      .catch(() => setReleaseNotesError('Failed to load release notes.'))
+      .finally(() => setReleaseNotesLoading(false));
+  }
 
   function signOut() {
     localStorage.removeItem('ct_token');
@@ -137,7 +181,7 @@ export default function Companies() {
   }
 
   function openModal() {
-    setForm({ name: '', authorizedShares: '', parValue: '' });
+    setForm({ name: '', authorizedShares: '10000000', parValue: '0.0001' });
     setCreateError('');
     setShowModal(true);
   }
@@ -205,7 +249,7 @@ export default function Companies() {
               onClick={() => setUserMenuOpen((o) => !o)}
               style={{ background: 'transparent', border: 'none', color: '#94a3b8', fontSize: '13px', fontWeight: 500, fontFamily: "'Outfit', sans-serif", cursor: 'pointer', padding: '4px 0' }}
             >
-              {email}
+              {displayName}
             </button>
 
             {userMenuOpen && (
@@ -234,6 +278,16 @@ export default function Companies() {
                 >
                   Contact Support
                 </a>
+                <div style={{ borderTop: '1px solid #334155' }} />
+                <button
+                  onClick={openReleaseNotes}
+                  data-testid="release-notes-menu-item"
+                  style={{ display: 'block', width: '100%', padding: '10px 16px', fontSize: '13px', color: '#94a3b8', background: 'transparent', border: 'none', textAlign: 'left', fontFamily: "'Outfit', sans-serif", cursor: 'pointer' }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = '#0f172a'; e.currentTarget.style.color = 'white'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#94a3b8'; }}
+                >
+                  Release Notes
+                </button>
                 <div style={{ borderTop: '1px solid #334155' }} />
                 <button
                   onClick={signOut}
@@ -319,6 +373,43 @@ export default function Companies() {
         </div>
       </div>
 
+      {/* Release Notes modal */}
+      {releaseNotesOpen && (
+        <div
+          data-testid="release-notes-backdrop"
+          onClick={() => setReleaseNotesOpen(false)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'Outfit', sans-serif" }}
+        >
+          <div
+            data-testid="release-notes-modal"
+            onClick={(e) => e.stopPropagation()}
+            style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: '12px', width: '560px', maxWidth: '90vw', maxHeight: '70vh', display: 'flex', flexDirection: 'column', boxShadow: '0 24px 64px rgba(0,0,0,0.6)' }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 24px', borderBottom: '1px solid #334155', flexShrink: 0 }}>
+              <h2 style={{ margin: 0, fontSize: '17px', fontWeight: 700, color: 'white' }}>Release Notes</h2>
+              <button
+                data-testid="release-notes-close"
+                onClick={() => setReleaseNotesOpen(false)}
+                style={{ background: 'transparent', border: 'none', color: '#64748b', fontSize: '22px', cursor: 'pointer', lineHeight: 1, padding: '0 4px', fontFamily: "'Outfit', sans-serif" }}
+                onMouseEnter={(e) => { e.currentTarget.style.color = 'white'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.color = '#64748b'; }}
+              >×</button>
+            </div>
+            <div style={{ overflowY: 'auto', padding: '8px 24px 24px' }}>
+              {releaseNotesLoading && <p style={{ color: '#64748b', fontSize: '14px', textAlign: 'center', padding: '32px 0', margin: 0 }}>Loading…</p>}
+              {releaseNotesError && <p style={{ color: '#ff8a80', fontSize: '14px', textAlign: 'center', padding: '32px 0', margin: 0 }}>{releaseNotesError}</p>}
+              {releaseNotes && releaseNotes.length === 0 && <p style={{ color: '#64748b', fontSize: '14px', textAlign: 'center', padding: '32px 0', margin: 0 }}>No release notes yet.</p>}
+              {releaseNotes && releaseNotes.map((item, i) => (
+                <div key={i} style={{ padding: '16px 0', borderBottom: i < releaseNotes.length - 1 ? '1px solid #0f172a' : 'none' }}>
+                  <p style={{ fontSize: '11px', color: '#475569', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: 600, margin: '0 0 6px 0' }}>{item.date}</p>
+                  <p style={{ fontSize: '14px', color: '#94a3b8', margin: 0, lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{item.notes}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Create Company modal */}
       {showModal && (
         <div
@@ -360,7 +451,22 @@ export default function Companies() {
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
                 <div>
-                  <label style={labelStyle}>Authorized Shares *</label>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
+                    <span style={{ ...labelStyle, marginBottom: 0 }}>Authorized Shares *</span>
+                    <div
+                      data-tooltip="shares"
+                      style={{ position: 'relative', display: 'flex', alignItems: 'center' }}
+                      onMouseEnter={() => setTooltipVisible('shares')}
+                      onMouseLeave={() => setTooltipVisible(null)}
+                    >
+                      <InfoIcon />
+                      {tooltipVisible === 'shares' && (
+                        <div style={tooltipStyle}>
+                          The total number of shares a company is legally permitted to issue. Most early-stage startups authorize <strong>10,000,000 shares</strong> — this gives flexibility to issue stock to founders, employees, and investors without revisiting the cap table structure too soon.
+                        </div>
+                      )}
+                    </div>
+                  </div>
                   <input
                     required
                     type="number"
@@ -373,7 +479,22 @@ export default function Companies() {
                   />
                 </div>
                 <div>
-                  <label style={labelStyle}>Par Value *</label>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
+                    <span style={{ ...labelStyle, marginBottom: 0 }}>Par Value *</span>
+                    <div
+                      data-tooltip="par"
+                      style={{ position: 'relative', display: 'flex', alignItems: 'center' }}
+                      onMouseEnter={() => setTooltipVisible('par')}
+                      onMouseLeave={() => setTooltipVisible(null)}
+                    >
+                      <InfoIcon />
+                      {tooltipVisible === 'par' && (
+                        <div style={{ ...tooltipStyle, right: 0, left: 'auto' }}>
+                          The nominal minimum price per share set in the company&apos;s charter. Most startups use <strong>$0.0001</strong> — a very low value that keeps Delaware franchise taxes minimal while satisfying legal requirements.
+                        </div>
+                      )}
+                    </div>
+                  </div>
                   <input
                     required
                     type="number"
@@ -440,3 +561,30 @@ const inputStyle: React.CSSProperties = {
   outline: 'none',
   boxSizing: 'border-box',
 };
+
+const tooltipStyle: React.CSSProperties = {
+  position: 'absolute',
+  bottom: 'calc(100% + 8px)',
+  left: 0,
+  zIndex: 100,
+  background: '#1e293b',
+  border: '1px solid #334155',
+  borderRadius: '8px',
+  padding: '10px 12px',
+  fontSize: '12px',
+  color: '#cbd5e1',
+  lineHeight: '1.5',
+  width: '220px',
+  boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
+  pointerEvents: 'none',
+};
+
+function InfoIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ cursor: 'help', flexShrink: 0 }}>
+      <circle cx="12" cy="12" r="10" />
+      <line x1="12" y1="16" x2="12" y2="12" />
+      <line x1="12" y1="8" x2="12.01" y2="8" />
+    </svg>
+  );
+}

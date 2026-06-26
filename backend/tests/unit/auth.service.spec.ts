@@ -10,7 +10,7 @@ vi.mock('bcrypt', () => ({
 vi.mock('google-auth-library', () => ({
   OAuth2Client: vi.fn().mockImplementation(() => ({
     verifyIdToken: vi.fn().mockResolvedValue({
-      getPayload: () => ({ email: 'google@example.com' }),
+      getPayload: () => ({ email: 'google@example.com', name: 'Google User' }),
     }),
   })),
 }));
@@ -74,6 +74,7 @@ describe('AuthService', () => {
         tenantId: 'tenant-1',
         email: 'a@b.com',
         role: 'ADMIN',
+        name: '',
       });
     });
   });
@@ -114,13 +115,13 @@ describe('AuthService', () => {
       mockPrisma.user.findUnique.mockResolvedValue(null);
       mockPrisma.pendingRegistration.upsert.mockResolvedValue({});
 
-      await service.register('a@b.com', 'password123', 'Acme');
+      await service.register('a@b.com', 'password123', 'Jane Smith', 'Acme');
 
       expect(mockPrisma.pendingRegistration.upsert).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { email: 'a@b.com' },
-          create: expect.objectContaining({ email: 'a@b.com', companyName: 'Acme' }),
-          update: expect.objectContaining({ companyName: 'Acme' }),
+          create: expect.objectContaining({ email: 'a@b.com', name: 'Jane Smith', companyName: 'Acme' }),
+          update: expect.objectContaining({ name: 'Jane Smith', companyName: 'Acme' }),
         }),
       );
       expect(mockEmail.sendEmailVerification).toHaveBeenCalledWith('a@b.com', 'mock-verification-token');
@@ -130,7 +131,7 @@ describe('AuthService', () => {
       mockPrisma.user.findUnique.mockResolvedValue(null);
       mockPrisma.pendingRegistration.upsert.mockResolvedValue({});
 
-      await service.register('a@b.com', 'password123', 'Acme');
+      await service.register('a@b.com', 'password123', 'Jane Smith', 'Acme');
 
       expect(mockPrisma.tenant.create).not.toHaveBeenCalled();
       expect(mockPrisma.user.create).not.toHaveBeenCalled();
@@ -138,7 +139,7 @@ describe('AuthService', () => {
 
     it('throws ConflictException when email is already registered', async () => {
       mockPrisma.user.findUnique.mockResolvedValue({ id: 'existing', email: 'a@b.com' });
-      await expect(service.register('a@b.com', 'pw', 'Acme')).rejects.toThrow(ConflictException);
+      await expect(service.register('a@b.com', 'pw', '', 'Acme')).rejects.toThrow(ConflictException);
       expect(mockEmail.sendEmailVerification).not.toHaveBeenCalled();
     });
   });
@@ -150,6 +151,7 @@ describe('AuthService', () => {
       mockPrisma.pendingRegistration.findUnique.mockResolvedValue({
         email: 'a@b.com',
         passwordHash: '$2b$12$hash',
+        name: 'Jane Smith',
         companyName: 'Acme',
         token: 'valid-token',
         expiresAt: futureDate,
@@ -157,7 +159,7 @@ describe('AuthService', () => {
       mockPrisma.user.findUnique.mockResolvedValue(null);
       mockPrisma.tenant.create.mockResolvedValue({ id: 'tenant-1', name: 'Acme' });
       mockPrisma.user.create.mockResolvedValue({
-        id: 'user-1', email: 'a@b.com', role: 'ADMIN', tenantId: 'tenant-1',
+        id: 'user-1', email: 'a@b.com', name: 'Jane Smith', role: 'ADMIN', tenantId: 'tenant-1',
       });
 
       const token = await service.verifyEmail('valid-token');
@@ -205,7 +207,7 @@ describe('AuthService', () => {
       const bcrypt = await import('bcrypt');
       vi.mocked(bcrypt.compare).mockResolvedValue(true as never);
       mockPrisma.user.findUnique.mockResolvedValue({
-        id: 'user-1', email: 'a@b.com', passwordHash: '$2b$12$hash', role: 'ADMIN', tenantId: 'tenant-1',
+        id: 'user-1', email: 'a@b.com', name: 'Jane Smith', passwordHash: '$2b$12$hash', role: 'ADMIN', tenantId: 'tenant-1',
       });
 
       const token = await service.login('a@b.com', 'correct-pw');
@@ -221,7 +223,7 @@ describe('AuthService', () => {
       const bcrypt = await import('bcrypt');
       vi.mocked(bcrypt.compare).mockResolvedValue(false as never);
       mockPrisma.user.findUnique.mockResolvedValue({
-        id: 'user-1', email: 'a@b.com', passwordHash: '$2b$12$hash', role: 'ADMIN', tenantId: 'tenant-1',
+        id: 'user-1', email: 'a@b.com', name: '', passwordHash: '$2b$12$hash', role: 'ADMIN', tenantId: 'tenant-1',
       });
       await expect(service.login('a@b.com', 'wrong-pw')).rejects.toThrow(UnauthorizedException);
     });
@@ -230,7 +232,7 @@ describe('AuthService', () => {
   describe('googleAuth', () => {
     it('returns a token for an existing Google user', async () => {
       mockPrisma.user.findUnique.mockResolvedValue({
-        id: 'user-1', email: 'google@example.com', role: 'ADMIN', tenantId: 'tenant-1',
+        id: 'user-1', email: 'google@example.com', name: 'Google User', role: 'ADMIN', tenantId: 'tenant-1',
       });
       const result = await service.googleAuth('valid-google-credential');
       expect(result.isNew).toBe(false);
@@ -251,7 +253,7 @@ describe('AuthService', () => {
       mockPrisma.user.findUnique.mockResolvedValue(null);
       mockPrisma.tenant.create.mockResolvedValue({ id: 'tenant-2', name: 'NewCo' });
       mockPrisma.user.create.mockResolvedValue({
-        id: 'user-2', email: 'google@example.com', role: 'ADMIN', tenantId: 'tenant-2',
+        id: 'user-2', email: 'google@example.com', name: 'Google User', role: 'ADMIN', tenantId: 'tenant-2',
       });
 
       const token = await service.googleRegister('valid-google-credential', 'NewCo');
@@ -262,7 +264,7 @@ describe('AuthService', () => {
 
     it('returns existing user token when Google user already has an account', async () => {
       mockPrisma.user.findUnique.mockResolvedValue({
-        id: 'user-1', email: 'google@example.com', role: 'ADMIN', tenantId: 'tenant-1',
+        id: 'user-1', email: 'google@example.com', name: '', role: 'ADMIN', tenantId: 'tenant-1',
       });
       const token = await service.googleRegister('valid-google-credential', 'AnyName');
       expect(token).toBe('signed.jwt.token');

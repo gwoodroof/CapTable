@@ -1,4 +1,4 @@
-import { Injectable, NestInterceptor, ExecutionContext, CallHandler, ForbiddenException } from '@nestjs/common';
+import { Injectable, NestInterceptor, ExecutionContext, CallHandler, ForbiddenException, UnauthorizedException } from '@nestjs/common';
 import { Observable } from 'rxjs';
 
 /**
@@ -15,14 +15,14 @@ export class TenantInterceptor implements NestInterceptor {
     const { tenantId: tokenTenantId } = request;
     const { tenantId: paramTenantId } = request.params;
 
-    // If route specifies a tenantId param, verify it matches the JWT
-    if (paramTenantId && tokenTenantId && paramTenantId !== tokenTenantId) {
-      throw new ForbiddenException('Tenant ID mismatch: Cannot access other tenants data');
+    // If route specifies a tenantId param, authentication is required
+    if (paramTenantId && !tokenTenantId) {
+      throw new UnauthorizedException('Authentication required');
     }
 
-    // Store tenant ID in request for downstream services
-    if (!request.tenantId && paramTenantId) {
-      request.tenantId = paramTenantId;
+    // Verify the JWT tenant matches the route param
+    if (paramTenantId && tokenTenantId && paramTenantId !== tokenTenantId) {
+      throw new ForbiddenException('Tenant ID mismatch: Cannot access other tenants data');
     }
 
     return next.handle();

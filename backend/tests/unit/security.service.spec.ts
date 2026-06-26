@@ -4,12 +4,16 @@ import { SecurityService } from '../../src/modules/security/security.service';
 
 const TENANT_ID = 'tenant-1';
 
-const makePrisma = () => ({
-  security: {
-    create: vi.fn(),
-    findMany: vi.fn(),
-  },
-});
+const makePrisma = () => {
+  const p = {
+    security: {
+      create: vi.fn(),
+      findMany: vi.fn(),
+    },
+    withTenant: vi.fn(async (_: string, fn: (tx: any) => Promise<any>) => fn(p)),
+  };
+  return p;
+};
 
 describe('SecurityService', () => {
   let service: SecurityService;

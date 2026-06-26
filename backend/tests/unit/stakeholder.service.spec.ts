@@ -5,19 +5,23 @@ import { StakeholderService } from '../../src/modules/stakeholder/stakeholder.se
 const TENANT_ID = 'tenant-1';
 const SH_ID = 'sh-1';
 
-const makePrisma = () => ({
-  stakeholder: {
-    findUnique: vi.fn(),
-    findMany: vi.fn(),
-    create: vi.fn(),
-  },
-  ledgerTransaction: {
-    findMany: vi.fn(),
-  },
-  grant: {
-    findMany: vi.fn(),
-  },
-});
+const makePrisma = () => {
+  const p = {
+    stakeholder: {
+      findUnique: vi.fn(),
+      findMany: vi.fn(),
+      create: vi.fn(),
+    },
+    ledgerTransaction: {
+      findMany: vi.fn(),
+    },
+    grant: {
+      findMany: vi.fn(),
+    },
+    withTenant: vi.fn(async (_: string, fn: (tx: any) => Promise<any>) => fn(p)),
+  };
+  return p;
+};
 
 describe('StakeholderService', () => {
   let service: StakeholderService;

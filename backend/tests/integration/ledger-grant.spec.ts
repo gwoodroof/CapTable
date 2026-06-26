@@ -22,7 +22,7 @@ const VS1 = 'vs-1';
 const makePrisma = () => {
   const ledgerStore: any[] = [];
 
-  return {
+  const p = {
     tenant: {
       findUnique: vi.fn().mockResolvedValue({ id: T1 }),
       create: vi.fn(),
@@ -67,8 +67,11 @@ const makePrisma = () => {
       }),
     },
     _store: ledgerStore,
+    withTenant: vi.fn(async (_: string, fn: (tx: any) => Promise<any>) => fn(p)),
   };
+  return p;
 };
+
 
 describe('Integration: LedgerService + GrantService + TenantService', () => {
   let prisma: ReturnType<typeof makePrisma>;

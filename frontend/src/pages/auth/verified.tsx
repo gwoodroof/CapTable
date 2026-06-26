@@ -6,12 +6,13 @@ export default function Verified() {
   const router = useRouter();
 
   useEffect(() => {
+    if (!router.isReady) return;
     const { token } = router.query;
     if (typeof token === 'string' && token) {
       localStorage.setItem('ct_token', token);
       router.replace('/companies');
     }
-  }, [router.query, router]);
+  }, [router.isReady, router.query, router]);
 
   return (
     <>

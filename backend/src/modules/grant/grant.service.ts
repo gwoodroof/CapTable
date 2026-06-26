@@ -35,35 +35,36 @@ export class GrantService {
       }
     }
 
-    // Validate referenced entities belong to this tenant
-    const [stakeholder, security, vestingSchedule] = await Promise.all([
-      this.prisma.stakeholder.findUnique({ where: { id: data.stakeholderId } }),
-      this.prisma.security.findUnique({ where: { id: data.securityId } }),
-      this.prisma.vestingSchedule.findUnique({ where: { id: data.vestingScheduleId } }),
-    ]);
+    const grant = await this.prisma.withTenant(tenantId, async (tx) => {
+      const [stakeholder, security, vestingSchedule] = await Promise.all([
+        tx.stakeholder.findUnique({ where: { id: data.stakeholderId } }),
+        tx.security.findUnique({ where: { id: data.securityId } }),
+        tx.vestingSchedule.findUnique({ where: { id: data.vestingScheduleId } }),
+      ]);
 
-    if (!stakeholder || stakeholder.tenantId !== tenantId) {
-      throw new BadRequestException(`Stakeholder not found or does not belong to this tenant`);
-    }
-    if (!security || security.tenantId !== tenantId) {
-      throw new BadRequestException(`Security not found or does not belong to this tenant`);
-    }
-    if (!vestingSchedule || vestingSchedule.tenantId !== tenantId) {
-      throw new BadRequestException(`Vesting schedule not found or does not belong to this tenant`);
-    }
+      if (!stakeholder || stakeholder.tenantId !== tenantId) {
+        throw new BadRequestException(`Stakeholder not found or does not belong to this tenant`);
+      }
+      if (!security || security.tenantId !== tenantId) {
+        throw new BadRequestException(`Security not found or does not belong to this tenant`);
+      }
+      if (!vestingSchedule || vestingSchedule.tenantId !== tenantId) {
+        throw new BadRequestException(`Vesting schedule not found or does not belong to this tenant`);
+      }
 
-    const grant = await this.prisma.grant.create({
-      data: {
-        stakeholderId: data.stakeholderId,
-        securityId: data.securityId,
-        vestingScheduleId: data.vestingScheduleId,
-        quantity: qty,
-        strikePrice: data.strikePrice ? decimal(data.strikePrice) : null,
-        grantDate: new Date(data.grantDate),
-        boardApprovalDate: data.boardApprovalDate ? new Date(data.boardApprovalDate) : null,
-        tenantId,
-      },
-      include: { stakeholder: true, security: true, vestingSchedule: true },
+      return tx.grant.create({
+        data: {
+          stakeholderId: data.stakeholderId,
+          securityId: data.securityId,
+          vestingScheduleId: data.vestingScheduleId,
+          quantity: qty,
+          strikePrice: data.strikePrice ? decimal(data.strikePrice) : null,
+          grantDate: new Date(data.grantDate),
+          boardApprovalDate: data.boardApprovalDate ? new Date(data.boardApprovalDate) : null,
+          tenantId,
+        },
+        include: { stakeholder: true, security: true, vestingSchedule: true },
+      });
     });
 
     const ledgerEntry = await this.ledgerService.recordTransaction({
@@ -80,10 +81,12 @@ export class GrantService {
   }
 
   async listGrants(tenantId: string) {
-    return this.prisma.grant.findMany({
-      where: { tenantId },
-      include: { stakeholder: true, security: true, vestingSchedule: true },
-      orderBy: { createdAt: 'desc' },
-    });
+    return this.prisma.withTenant(tenantId, (tx) =>
+      tx.grant.findMany({
+        where: { tenantId },
+        include: { stakeholder: true, security: true, vestingSchedule: true },
+        orderBy: { createdAt: 'desc' },
+      }),
+    );
   }
 }
