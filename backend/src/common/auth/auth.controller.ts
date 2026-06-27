@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Body, HttpCode, Query, Redirect, Req, UnauthorizedException } from '@nestjs/common';
+import { Controller, Post, Get, Patch, Body, HttpCode, Query, Redirect, Req, UnauthorizedException } from '@nestjs/common';
 import { Request } from 'express';
 import { AuthService } from './auth.service';
 
@@ -66,6 +66,14 @@ export class AuthController {
   async switchCompany(@Body() body: { tenantId: string }, @Req() req: Request) {
     if (!req.user) throw new UnauthorizedException('Authentication required');
     const token = await this.authService.switchCompany(req.user.sub, req.user.email, req.user.name ?? '', body.tenantId);
+    return { token };
+  }
+
+  @Patch('profile')
+  @HttpCode(200)
+  async updateProfile(@Body() body: { name: string }, @Req() req: Request) {
+    if (!req.user) throw new UnauthorizedException('Authentication required');
+    const token = await this.authService.updateProfile(req.user.sub, body.name ?? '');
     return { token };
   }
 }

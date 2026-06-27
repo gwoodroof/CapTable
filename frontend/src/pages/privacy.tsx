@@ -1,5 +1,6 @@
 import React from 'react';
 import Head from 'next/head';
+import AlphaBadge from '../components/AlphaBadge';
 
 function PiconLogo({ size = 32 }: { size?: number }) {
   return (
@@ -25,6 +26,7 @@ export default function Privacy() {
           <a href="/" style={{ display: 'flex', alignItems: 'center', gap: '12px', textDecoration: 'none' }}>
             <PiconLogo size={34} />
             <span style={{ fontWeight: 700, fontSize: '20px', color: 'white' }}>CapTable</span>
+            <AlphaBadge />
           </a>
         </nav>
 

@@ -2,8 +2,13 @@ import { defineConfig, devices } from '@playwright/test';
 import * as dotenv from 'dotenv';
 import path from 'path';
 
-// Load backend test env so DATABASE_URL is available in global-setup/teardown
-dotenv.config({ path: path.join(__dirname, '../backend/.env.test') });
+// In CI a fresh NODE_ENV=test backend is started (uses .env.test / captable_test).
+// Locally reuseExistingServer is true, so we hit whatever backend is already running;
+// load its actual env so DATABASE_URL matches what it writes to.
+const backendEnvFile = process.env.CI
+  ? path.join(__dirname, '../backend/.env.test')
+  : path.join(__dirname, '../backend/.env');
+dotenv.config({ path: backendEnvFile });
 
 export default defineConfig({
   testDir: './tests/e2e',

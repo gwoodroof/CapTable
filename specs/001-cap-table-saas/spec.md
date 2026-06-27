@@ -270,6 +270,264 @@
 
 ---
 
+### User Story 3.18 - Actions Menu on the Ledger Tab (Priority: P1)
+
+**As an** admin on the Ledger tab, **I want to** access "+ Add Investment" and "+ Grant Options" from a single "Actions" dropdown menu, **so that** the page header stays clean and these operations are clearly grouped as admin-only actions.
+
+**Why this priority**: The Ledger tab is the primary admin workspace; surfacing ad-hoc data-entry operations behind an explicit "Actions" menu makes the distinction between viewing and mutating clearer.
+
+**Independent Test**: Navigate to the Ledger tab as an admin. Confirm no standalone "+ Add Investment" or "+ Grant Options" buttons are present. Click the "Actions" button. Confirm a dropdown appears with both items. Click each and confirm navigation to the correct page.
+
+**Acceptance Scenarios**:
+1. **Given** an admin is on the Ledger tab, **When** the page loads, **Then** an "Actions ▾" button is shown in the header; no standalone "+ Add Investment" or "+ Grant Options" buttons exist.
+2. **Given** the Actions button is clicked, **When** the dropdown opens, **Then** it contains "Add Investment" and "Grant Options" as items.
+3. **Given** the dropdown is open, **When** the user clicks "Add Investment", **Then** the dropdown closes and the user is navigated to `/investments/new`.
+4. **Given** the dropdown is open, **When** the user clicks "Grant Options", **Then** the dropdown closes and the user is navigated to `/grants/new`.
+5. **Given** the dropdown is open, **When** the user clicks anywhere outside, **Then** the dropdown closes.
+6. **Given** the Ledger page already redirects non-admins away, **Then** the Actions menu is effectively admin-only.
+
+**Key Implementation Notes**:
+- `actionsOpen` state + `actionsRef` with a `mousedown` click-outside handler, matching the existing pattern used by the company-switcher and user-menu dropdowns.
+- `data-testid` attributes: `actions-menu-button`, `actions-menu-dropdown`, `actions-add-investment`, `actions-grant-options`, `actions-offboard-stakeholder`.
+
+---
+
+### User Story 3.19 - Stakeholder Offboarding Wizard (Priority: P1)
+
+**As an** admin on the Ledger tab, **I want to** run a guided offboarding wizard for a departing stakeholder, **so that** vesting entries are reconciled, the post-termination exercise window is recorded, and any acceleration clauses are applied, all from a single confirm-before-commit flow.
+
+**Why this priority**: Departures are time-sensitive and high-stakes. An error in vesting reconciliation or PTEP configuration can expose the company to legal liability; a step-by-step wizard with a confirmation summary reduces that risk.
+
+**Independent Test**: Open the Actions menu on the Ledger tab. Click "Offboard Stakeholder". Complete each step of the wizard and confirm the ledger is updated with the expected CANCELLATION and/or VEST entries after clicking "Confirm & Apply".
+
+**Acceptance Scenarios**:
+1. **Given** an admin opens the Actions menu, **When** they click "Offboard Stakeholder", **Then** a 5-step wizard modal opens at Step 1.
+2. **Step 1 — Termination Details**: Admin selects the stakeholder, enters the termination date, and selects the termination type (Voluntary, Involuntary, Disability, Death, Retirement).
+3. **Step 2 — Vesting Recalculation**: The wizard fetches a preview from the backend and displays a table showing total granted, shares vested by the termination date, any over-vested entries to be reversed, and net vested shares.
+4. **Step 3 — PTEP Configuration**: Admin sees the standard 90-day window. A checkbox allows overriding it with a custom number of days. The calculated exercise deadline is displayed.
+5. **Step 4 — Acceleration**: A toggle enables accelerated vesting. If toggled on, admin chooses between "flat number of additional shares" or "additional months of vesting" and enters the amount.
+6. **Step 5 — Confirmation**: A summary shows stakeholder name, termination date/type, shares retained, cancellations, acceleration, and PTEP deadline. Admin clicks "Confirm & Apply".
+7. **Given** the admin clicks "Confirm & Apply", **Then** the backend: creates CANCELLATION entries for any VEST entries after the termination date, creates a VEST entry for any accelerated shares, and marks each of the stakeholder's grants with `terminatedAt` and `terminationType`.
+8. **Given** a grant is terminated, **When** `materializeVestings` runs, **Then** it does not create VEST entries for periods after `terminatedAt`.
+9. **Given** a non-admin user is on the Ledger page, **Then** they are redirected away and cannot access the wizard.
+
+**Key Implementation Notes**:
+- Schema: `terminatedAt DateTime?`, `terminationType String?`, `ptepDays Int?` added to `Grant`.
+- Backend endpoints: `POST /api/v1/grants/offboard/preview` (returns preview without writing) and `POST /api/v1/grants/offboard/commit` (applies changes).
+- `materializeVestings` now skips events where `event.date > grant.terminatedAt`.
+- Acceleration "months" method computes future vesting events in the window `(terminationDate, terminationDate + N months]` and sums them; "shares" method distributes a flat total proportionally across the stakeholder's grants by grant quantity.
+- CANCELLATION entries created for each existing VEST ledger entry with `timestamp > terminationDate`.
+- Acceleration VEST entries use `vestingPeriodIndex = null` (PostgreSQL NULLs don't violate the unique constraint).
+- `data-testid` attributes: `offboard-wizard`, `offboard-step-1` through `offboard-step-5`, `offboard-stakeholder-select`, `offboard-termination-date`, `offboard-termination-type`, `offboard-ptep-override-toggle`, `offboard-ptep-days`, `offboard-acceleration-toggle`, `offboard-accel-method`, `offboard-accel-value`, `offboard-confirm-button`.
+
+---
+
+### User Story 3.20 - Stock Certificate PDF Attached to Equity Notification Email (Priority: P2)
+
+**As a** stakeholder who receives shares, **I want to** receive a stock certificate PDF attached to my notification email, **so that** I have a formal record of my equity transaction without having to log in.
+
+**Why this priority**: A certificate provides a recognizable, legally-flavored artifact that increases stakeholder trust and gives them an offline record of their equity position.
+
+**Independent Test**: Record an ISSUANCE ledger entry for a stakeholder with an email address. Confirm the Postmark API is called with one `Attachment` whose `ContentType` is `application/pdf` and whose `Name` matches `certificate-CS-XXXX.pdf`. Confirm the `LedgerTransaction` row has a non-null `certificateNumber`. Record a VEST entry and confirm no attachment is sent.
+
+**Acceptance Scenarios**:
+1. **Given** a ledger entry of type ISSUANCE, EXERCISE, or TRANSFER is recorded for a stakeholder with an email, **When** the entry is committed, **Then** a PDF stock certificate is generated and attached to the notification email.
+2. **Given** a ledger entry of type VEST, CANCELLATION, or ADJUSTMENT is recorded, **When** the entry is committed, **Then** no certificate is generated and the notification email (if any) has no attachment.
+3. **Given** a certificate is generated, **Then** the `LedgerTransaction.certificateNumber` field is set to the value `CS-XXXX` (e.g. `CS-0001`), where XXXX is a per-tenant sequential number padded to 4 digits.
+4. **Given** multiple cert-eligible transactions have been recorded for a tenant, **When** a new cert-eligible entry is added, **Then** its `certificateNumber` is one higher than the current count of non-null `certificateNumber` rows for that tenant (computed inside the DB transaction).
+5. **Given** the company has an `iconUrl` set, **When** the certificate is generated, **Then** the icon is fetched and embedded; if the fetch fails or returns a non-OK status, the service falls back to a monogram square using the first letter of the company name.
+6. **Given** PDF generation fails, **When** a cert-eligible ledger entry is committed, **Then** the notification email is still sent (without an attachment) and the ledger entry is still written — the failure is swallowed.
+7. **Given** the stakeholder has no email address, **Then** no certificate is generated and no email is sent.
+
+**Certificate content**:
+- Company name and icon (or monogram fallback)
+- Certificate serial number (e.g. `CS-0001`) displayed in the top-right corner
+- Stakeholder full name
+- Share quantity (locale-formatted) and security label (e.g. "10,000 Shares of Common Stock")
+- Issue date (Month D, YYYY format)
+- Footer disclaimer line
+
+**Key Implementation Notes**:
+- Schema: `certificateNumber String?` added to `LedgerTransaction`. Applied via `prisma db push` (no migration file, same as prior schema changes). Prisma client regenerated.
+- `CertificateService` (`src/common/certificate/certificate.service.ts`) uses the `pdfkit` npm package. Page size: LETTER landscape (792 × 612 pts), 0.5-inch (36 pt) margins. Icon is fetched via native `fetch` with a 5-second `AbortSignal` timeout.
+- `CertificateModule` is imported by `LedgerModule`.
+- `EmailService.sendLedgerNotification()` accepts an optional second parameter `PostmarkAttachment[]`; when provided, the array is passed to Postmark's `Attachments` field.
+- For cert-eligible types, `LedgerService` runs an async IIFE (fire-and-forget): generate PDF → send email with attachment. For non-cert types, the existing direct `.catch()` fire-and-forget path is used.
+- Certificate attachment file name: `certificate-{certNumber}.pdf`.
+- 8 unit tests added in `certificate.service.spec.ts`; 10 new cert-specific tests added to `ledger.service.spec.ts` (213 total unit tests passing).
+
+---
+
+### User Story 3.21 - Investor Buyout Wizard (Priority: P1)
+
+**As an** admin, **I want to** record a share transfer from one existing stakeholder (seller) to another (buyer) through a guided wizard, **so that** the ledger accurately reflects the ownership change, the seller's shares are cancelled, the buyer receives a new stock certificate, and the original cost-basis information is captured for QSBS / tax tracking.
+
+**Why this priority**: Secondary-market transfers are a core cap table event. Without this, an admin would have to manually create two ledger entries with no validation, no chain integrity check, and no cost-basis record.
+
+**Independent Test**: Navigate to the Ledger tab as an admin, open the Actions menu, click "Investor Buyout", complete all 5 wizard steps (seller → security/shares → buyer → cost basis → confirm), and click "Confirm & Apply". Verify the ledger now contains a new CANCELLATION row for the seller and a new ISSUANCE row for the buyer in the same `withTenant` transaction, and that the buyer's ISSUANCE has a `certificateNumber` assigned.
+
+**Acceptance Scenarios**:
+1. **Given** an admin opens the Actions menu on the Ledger tab, **Then** an "Investor Buyout" option is present.
+2. **Given** the admin clicks "Investor Buyout", **Then** a 5-step modal wizard opens (same pattern as the offboarding wizard).
+3. **Given** Step 1, **When** no seller is selected, **Then** the "Next →" button is disabled.
+4. **Given** the admin selects a seller and advances to Step 2, **Then** the wizard fetches and displays that seller's current holdings (grouped by security class with net share balance); if the seller has only one security, it is auto-selected.
+5. **Given** Step 2, **When** the admin enters a quantity greater than the seller's current balance, **Then** an inline validation error is shown and "Next →" is disabled.
+6. **Given** Step 2, **When** the admin enters a valid quantity and sale price per share, **Then** "Next →" advances to Step 3.
+7. **Given** Step 3, **Then** the buyer dropdown contains all stakeholders except the seller.
+8. **Given** the admin selects a buyer and clicks "Next →", **Then** the backend `POST /ledger/:tenantId/buyout/preview` endpoint is called; on success the wizard advances to Step 4; on failure the error message is shown inline in Step 3.
+9. **Given** Step 4 (Cost Basis), **Then** a read-only table shows all ISSUANCE transactions for the seller in the selected security (original issue date, quantity, original price per share). No eligibility computation is performed.
+10. **Given** Step 5 (Confirmation), **Then** a full summary is shown: seller name, buyer name, security, quantity, sale price per share, total consideration (quantity × price), and the two ledger entries to be created (CANCELLATION for seller, ISSUANCE for buyer). A "Confirm & Apply" button is displayed.
+11. **Given** the admin clicks "Confirm & Apply", **Then** `POST /ledger/:tenantId/buyout/commit` is called; on success a success state is shown and the page reloads; on failure an error is shown inline.
+12. **Given** the commit succeeds, **Then** exactly two `LedgerTransaction` rows are created inside a single `withTenant` transaction: a CANCELLATION (seller, no `pricePerShare`, no `certificateNumber`) and an ISSUANCE (buyer, with `pricePerShare` and a new `CS-XXXX` `certificateNumber`); the issuance's `previousRowHash` equals the cancellation's `chainHash`.
+13. **Given** the commit succeeds and the buyer has an email address, **Then** a stock certificate PDF (per User Story 3.20) is generated and emailed to the buyer asynchronously (fire-and-forget, same as `recordTransaction`).
+
+**Validation** (enforced on both preview and commit):
+- Seller ≠ buyer.
+- Quantity > 0.
+- Sale price per share > 0.
+- Seller's balance in the selected security at commit time ≥ quantity (re-validated at commit, not just preview).
+- Seller, buyer, and security must all belong to the tenant.
+
+**Backend endpoints** (`LedgerController`):
+- `GET /ledger/:tenantId/holdings/:stakeholderId` — returns `{ securityId, securityName, securityType, balance }[]` filtered to securities with a positive net balance.
+- `POST /ledger/:tenantId/buyout/preview` — accepts `{ sellerId, buyerId, securityId, quantity, pricePerShare }`, returns `{ seller, buyer, security, sellerBalance, quantity, pricePerShare, totalConsideration, sellerIssuances[] }`. No DB write.
+- `POST /ledger/:tenantId/buyout/commit` — same body; creates both ledger entries atomically. Returns `{ cancellationEntry, issuanceEntry }`.
+- All three endpoints require ADMIN role.
+
+**Key Implementation Notes**:
+- No new Prisma schema changes — all data fits existing `LedgerTransaction` fields.
+- `LedgerService.getStakeholderHoldings()` groups all transactions by `securityId` and applies the same sign rules as `getStakeholderBalance()`; returns only securities with a positive balance.
+- `LedgerService.buyoutCommit()` creates both entries inside a single `withTenant` call. The cancellation's `chainHash` is computed first and used as the issuance's `previousRowHash`, maintaining chain integrity.
+- Cert number for the issuance is computed with `count({ where: { tenantId, certificateNumber: { not: null } } })` inside the same transaction.
+- 4 unit tests added for `getStakeholderHoldings`, 7 for `buyoutPreview`, 9 for `buyoutCommit` (251 total backend tests passing).
+- 5 E2E tests added in `ledger.spec.ts`.
+
+---
+
+### User Story 3.22 - Add Stakeholder from the Stakeholders Tab (Priority: P1)
+
+**As an** admin, **I want to** add a new stakeholder directly from the Stakeholders tab without navigating away, **so that** I can quickly onboard investors, employees, or entities before issuing them equity.
+
+**Why this priority**: Stakeholders must exist before they can appear in the Ledger or Cap Table. The alternative flow (add via Cap Table) is non-obvious; a direct "Add Stakeholder" button on the Stakeholders page reduces admin friction.
+
+**Independent Test**: On the `/company/:id/stakeholders` page, click "Add Stakeholder", fill in a name and type, submit, and confirm the new stakeholder appears at the top of the list without a page reload.
+
+**Acceptance Scenarios**:
+
+1. **Given** an admin navigates to the Stakeholders tab, **Then** an "Add Stakeholder" button is visible in the table header.
+2. **Given** the admin clicks "Add Stakeholder", **Then** a modal opens with Name (required), Type (INDIVIDUAL/ENTITY select), and Email (optional) fields.
+3. **Given** the Name field is empty, **Then** the submit button is disabled.
+4. **Given** the admin types a name, **Then** the submit button becomes enabled.
+5. **Given** the admin clicks Cancel, **Then** the modal closes without making any API call.
+6. **Given** the admin submits a valid name and type with no email, **Then** a POST to `POST /api/v1/stakeholders` is made and the new stakeholder is prepended to the list.
+7. **Given** the admin submits with an email already in use by another stakeholder, **Then** an inline error "A stakeholder with that email address already exists." is shown and the modal stays open.
+8. **Given** the submit succeeds, **Then** the modal closes and the new stakeholder appears at the top of the table with the correct name, type badge, and "No account" in the Platform Role column.
+
+**Validation Rules**:
+- Name must be non-empty after trimming whitespace.
+- Type must be `INDIVIDUAL` or `ENTITY` (defaults to `INDIVIDUAL`).
+- Email is optional; if provided it must be unique per tenant.
+
+**Backend Endpoints Used**:
+- `POST /api/v1/stakeholders` — `StakeholderController.createStakeholder()`, requires ADMIN role; accepts `{ name, type, email? }`.
+
+**Key Implementation Notes**:
+- No backend changes required — `POST /api/v1/stakeholders` already existed.
+- Modal state (`addOpen`, `addName`, `addType`, `addEmail`, `addError`, `addSubmitting`) added to `stakeholders/index.tsx`.
+- On success, the created object is prepended to the React state array (no page reload).
+- `data-testid` attributes: `add-stakeholder-button`, `add-stakeholder-modal`, `add-stakeholder-name`, `add-stakeholder-type`, `add-stakeholder-email`, `add-stakeholder-submit`.
+- 5 unit tests already existed for `createStakeholder` (empty name, whitespace trim, duplicate email, entity type, no email).
+- 7 E2E tests added in `stakeholders.spec.ts` (button visible, modal opens, fields present, submit disabled when empty, enabled after name entry, cancel closes modal, full round-trip creates stakeholder).
+
+---
+
+### User Story 3.17 - Company Icons on the /companies List (Priority: P2)
+
+**As a** user on the `/companies` page, **I want to** see each company's icon (or monogram fallback) on its card, **so that** companies are visually distinct and the list feels consistent with the rest of the app.
+
+**Why this priority**: Cosmetic consistency — the icon/monogram is already set up everywhere else (CompanyNav, company info page) and the `/companies` page is the primary entry point.
+
+**Independent Test**: On the `/companies` page, confirm that a company with a custom icon shows that image, while a company without one shows a blue square with the first letter of its name. Confirm the `BuildingIcon` (blue 3×3 table grid) is no longer shown on cards.
+
+**Acceptance Scenarios**:
+1. **Given** a company has a custom `iconUrl`, **When** its card is displayed on `/companies`, **Then** the icon image is shown (42×42px, rounded corners) in place of the generic building icon.
+2. **Given** a company has no `iconUrl`, **When** its card is displayed, **Then** a blue 42×42px monogram square with the uppercased first letter of the company name is shown.
+3. **Given** either case, **Then** the card layout (company name, date, authorized shares, par value) is unchanged.
+
+**Key Implementation Notes**:
+- `Company` interface extended with `iconUrl?: string | null`.
+- The `BuildingIcon` component is retained only for the empty-state illustration (no companies yet); it is no longer used in the company cards.
+
+---
+
+### User Story 3.16 - Alpha Badge on All Brand Nav Pages (Priority: P3)
+
+**As a** user on any page that shows the CapTable logo and brand name, **I want to** see the "Alpha" badge next to the wordmark, **so that** the app's pre-release status is consistently communicated everywhere, not just on the homepage.
+
+**Why this priority**: Low-effort consistency fix; the badge already exists on the homepage and simply needs propagating.
+
+**Independent Test**: Visit `/companies`, `/signup`, `/privacy`, and `/terms`. Confirm the amber "Alpha" badge appears after the "CapTable" wordmark on each page. Hover the badge and confirm the tooltip appears.
+
+**Acceptance Scenarios**:
+1. **Given** any of the pages `/companies`, `/signup`, `/privacy`, `/terms`, **When** the page renders, **Then** an amber "Alpha" badge appears to the right of the "CapTable" brand name in the navigation.
+2. **Given** the Alpha badge is visible, **When** the user hovers over it, **Then** a tooltip reads "⚠ This app is under rapid development and is currently for educational uses only."
+3. **Given** the badge is rendered, **Then** it is visually identical to the badge on the homepage (same color, font, border, and padding).
+
+**Key Implementation Notes**:
+- Badge and tooltip logic extracted into a reusable `AlphaBadge` component at `src/components/AlphaBadge.tsx`.
+- Imported and placed immediately after the `<span>CapTable</span>` wordmark on `/companies`, `/signup`, `/privacy`, and `/terms`.
+
+---
+
+### User Story 3.15 - Automatic Vesting Entries on the Ledger (Priority: P1)
+
+**As an** admin viewing the ledger, **I want to** see VEST entries automatically created over time for each options holder in accordance with their vesting schedule, **so that** the ledger is always an accurate source of truth for who has vested what.
+
+**Why this priority**: Vesting is a core cap-table operation. Without automatic VEST entries, the ledger understates stakeholders' earned equity and the equity tab shows stale data.
+
+**Independent Test**: Create a grant with a past grant date (e.g., 2 years ago), a 1-year cliff, and monthly vesting. Navigate to the Ledger page. Confirm that VEST ledger entries appear automatically, one per due vesting period, with correct quantities and timestamps matching the scheduled vest dates.
+
+**Acceptance Scenarios**:
+1. **Given** a grant exists with a grant date in the past and a vesting schedule, **When** an admin loads the Ledger page, **Then** VEST entries are automatically created for all vesting periods whose scheduled date is on or before today.
+2. **Given** a grant has a 1-year cliff, **When** vesting is materialized before the cliff date, **Then** no VEST entries are created.
+3. **Given** the cliff date has passed, **When** vesting is materialized, **Then** a single cliff VEST entry is created aggregating all periods up to the cliff date.
+4. **Given** post-cliff periods are due, **When** vesting is materialized, **Then** one VEST entry per period is created at the scheduled vest date.
+5. **Given** vesting has already been materialized, **When** the Ledger page is loaded again, **Then** no duplicate VEST entries are created (idempotent).
+6. **Given** total grant quantity does not divide evenly by the number of periods, **When** vesting entries are created, **Then** the last period absorbs any rounding remainder so the sum of all VEST entries equals the grant quantity exactly.
+7. **Given** a VEST entry fails to create (e.g., server error), **When** the ledger page loads, **Then** the existing data is still displayed — vesting materialization is non-blocking.
+
+**Key Implementation Notes**:
+- `computeVestingEvents(grant, schedule)` is a pure function in `vesting.service.ts` that returns `{ periodIndex, date, quantity }[]`. Events before the cliff are batched into a single cliff event at `grantDate + cliffMonths`.
+- `VestingService.materializeVestings(tenantId, now)` queries all grants for the tenant, checks which `(grantId, vestingPeriodIndex)` pairs already exist in the ledger (unique constraint prevents duplicates), and calls `LedgerService.recordTransaction` for any missing ones with `transactionType = 'VEST'` and `timestamp = event.date`.
+- `POST /api/v1/grants/run-vesting` is called on every Ledger page load, before fetching the transaction report. The call is fire-and-forget (errors are swallowed so they don't block page rendering).
+- `LedgerTransaction` has two new nullable fields: `grantId` (foreign key to `Grant`) and `vestingPeriodIndex` (Int). A `@@unique([grantId, vestingPeriodIndex])` constraint provides the idempotency guarantee — PostgreSQL does not enforce uniqueness between NULL rows.
+
+---
+
+### User Story 3.14 - User Info Modal (Priority: P2)
+
+**As a** logged-in user, **I want to** choose "User Info" from the user dropdown, **so that** I can view my email address and update my display name without leaving the app.
+
+**Why this priority**: Users who signed up via email or Google SSO may want to correct their display name; exposing a lightweight profile editor avoids the need for a separate settings page.
+
+**Independent Test**: Open the user menu, click "User Info", confirm a modal opens with a read-only email field pre-populated from the JWT and an editable name field. Update the name, click Save, and confirm the modal closes and the nav now shows the updated name.
+
+**Acceptance Scenarios**:
+1. **Given** any authenticated page, **When** the user opens the user dropdown, **Then** "User Info" is listed as the first item (above "Contact Support").
+2. **Given** the user menu is open, **When** the user clicks "User Info", **Then** the dropdown closes and a modal opens titled "User Info".
+3. **Given** the User Info modal is open, **Then** the email field is pre-populated with the user's email from the JWT and is read-only.
+4. **Given** the User Info modal is open, **Then** the name field is pre-populated with the user's current display name from the JWT and is editable.
+5. **Given** the user updates the name and clicks "Save", **When** the server responds with a new JWT, **Then** the modal closes, the new token is stored, and the nav bar reflects the updated name.
+6. **Given** the User Info modal is open, **When** the user clicks "Cancel" or the × button, **Then** the modal closes without saving any changes.
+7. **Given** the modal is present on both `/companies` and any company-scoped page, **Then** the same User Info behavior is available from both nav surfaces.
+
+**Key Implementation Notes**:
+- `PATCH /api/v1/auth/profile` accepts `{ name }`, updates the `User.name` column in the database, and returns a fresh signed JWT containing the updated name.
+- The frontend reads `name` and `email` from the decoded JWT when the modal opens (no extra API call required for the initial load).
+- After a successful save, the `/companies` page updates `displayName` state immediately so the nav label reflects the change without a reload.
+
+---
+
 ### User Story 3.11 - Release Notes in User Menu (Priority: P2)
 
 **As a** logged-in user, **I want to** see a "Release Notes" option in the user dropdown, **so that** I can read what has changed in the product without leaving the app.

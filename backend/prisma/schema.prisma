@@ -201,24 +201,30 @@ model Grant {
   id                  String   @id @default(uuid())
   stakeholderId       String
   stakeholder         Stakeholder @relation(fields: [stakeholderId], references: [id], onDelete: Cascade)
-  
+
   securityId          String
   security            Security @relation(fields: [securityId], references: [id])
-  
+
   quantity            Decimal  @db.Decimal(24, 12) // Total shares/options granted
   strikePrice         Decimal? @db.Decimal(20, 10) // Only for options
-  
+
   grantDate           DateTime
   boardApprovalDate   DateTime?
-  
+
   vestingScheduleId   String
   vestingSchedule     VestingSchedule @relation(fields: [vestingScheduleId], references: [id])
-  
+
+  terminatedAt        DateTime?
+  terminationType     String?   // 'VOLUNTARY' | 'INVOLUNTARY' | 'DISABILITY' | 'DEATH' | 'RETIREMENT'
+  ptepDays            Int?      // post-termination exercise period override; null = plan default
+
   tenantId            String
   tenant              Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  
+
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
+
+  vestingEntries      LedgerTransaction[]
 
   @@index([stakeholderId])
   @@index([tenantId])
@@ -231,32 +237,38 @@ model Grant {
 
 model LedgerTransaction {
   id                  String   @id @default(uuid())
-  
+
   // Multi-tenancy enforcement
   tenantId            String
   tenant              Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  
+
   // Transaction details
   transactionType     TransactionType
   stakeholderId       String
   stakeholder         Stakeholder @relation(fields: [stakeholderId], references: [id])
-  
+
   securityId          String
   security            Security @relation(fields: [securityId], references: [id])
-  
+
   quantity            Decimal  @db.Decimal(24, 12)  // Shares affected
   pricePerShare       Decimal? @db.Decimal(20, 10)  // For exercises, purchases
-  
+
+  // Optional back-reference to the originating grant (VEST entries only)
+  grantId             String?
+  grant               Grant?   @relation(fields: [grantId], references: [id])
+  vestingPeriodIndex  Int?     // Which vesting period this entry covers — used for idempotency
+
   // Timestamps (UTC)
   timestamp           DateTime @default(now())
-  
+
   // Audit trail & cryptographic integrity
   dataHash            String   // SHA-256 hash of transaction data
   previousRowHash     String?  // Hash of previous entry for this tenant (chain)
   chainHash           String   // SHA-256(dataHash + previousRowHash)
-  
+
   initiatedBy         String?  // User ID who initiated this
-  
+  certificateNumber   String?  // e.g. CS-0001; set only for ISSUANCE, EXERCISE, TRANSFER
+
   createdAt           DateTime @default(now())
 
   // Append-only: No updates or deletes
@@ -264,7 +276,9 @@ model LedgerTransaction {
   @@index([timestamp])
   @@index([transactionType])
   @@index([stakeholderId])
+  @@index([grantId])
   @@unique([tenantId, id]) // Ensures no cross-tenant access
+  @@unique([grantId, vestingPeriodIndex]) // One VEST entry per period per grant (nulls don't conflict)
 }
 
 enum TransactionType {

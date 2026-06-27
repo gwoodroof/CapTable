@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
 import { GoogleLogin } from '@react-oauth/google';
+import AlphaBadge from '../components/AlphaBadge';
 
 function PiconLogo({ size = 32 }: { size?: number }) {
   return (
@@ -141,6 +142,7 @@ export default function Signup() {
           <a href="/" style={{ display: 'flex', alignItems: 'center', gap: '10px', textDecoration: 'none' }}>
             <PiconLogo size={30} />
             <span style={{ fontWeight: 700, fontSize: '18px', color: 'white' }}>CapTable</span>
+            <AlphaBadge />
           </a>
         </nav>
 

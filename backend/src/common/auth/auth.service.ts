@@ -165,6 +165,14 @@ export class AuthService {
     return this.generateToken(user.id, tenant.id, email, 'ADMIN', name);
   }
 
+  async updateProfile(userId: string, name: string): Promise<string> {
+    const user = await this.prisma.user.update({
+      where: { id: userId },
+      data: { name },
+    });
+    return this.generateToken(user.id, user.tenantId, user.email, user.role, user.name);
+  }
+
   async switchCompany(userId: string, email: string, name: string, targetTenantId: string): Promise<string> {
     const membership = await this.prisma.companyMembership.findUnique({
       where: { userId_tenantId: { userId, tenantId: targetTenantId } },

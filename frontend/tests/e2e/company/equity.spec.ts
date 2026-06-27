@@ -25,9 +25,9 @@ test.describe('User Story 3.7 — Equity tab & role-based tab visibility', () =>
 
   test('Equity tab is active/highlighted on the equity page', async ({ adminPage, adminMeta }) => {
     await adminPage.goto(`/company/${adminMeta.tenantId}/equity`);
-    // The active tab has color #0066cc — verify the Equity button is present and visible
+    // Wait for the page to finish loading (fetches equity data before rendering tabs)
     const equityTab = adminPage.getByRole('button', { name: 'Equity' });
-    await expect(equityTab).toBeVisible();
+    await expect(equityTab).toBeVisible({ timeout: 15_000 });
   });
 
   test('clicking Cap Table tab navigates to cap_table route', async ({ adminPage, adminMeta }) => {

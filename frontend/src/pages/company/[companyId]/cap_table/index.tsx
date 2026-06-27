@@ -174,23 +174,9 @@ export default function CapTableDashboard() {
         <CompanyNav companyId={companyId!} companyName={tenant?.name ?? ''} displayName={displayName} />
 
         <div style={{ maxWidth: '1100px', margin: '0 auto', padding: '40px 32px' }}>
-          {/* Page title + actions */}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '32px', flexWrap: 'wrap', gap: '12px' }}>
+          {/* Page title */}
+          <div style={{ marginBottom: '32px' }}>
             <h1 style={{ fontWeight: 800, fontSize: '26px', color: 'white', margin: 0 }}>Cap Table Dashboard</h1>
-            <div style={{ display: 'flex', gap: '12px' }}>
-              <button
-                onClick={() => router.push(`/company/${companyId}/investments/new`)}
-                style={{ background: '#0066cc', border: 'none', borderRadius: '8px', color: 'white', padding: '10px 20px', fontSize: '14px', fontWeight: 600, fontFamily: "'Outfit', sans-serif", cursor: 'pointer' }}
-              >
-                + Add Investment
-              </button>
-              <button
-                onClick={() => router.push(`/company/${companyId}/grants/new`)}
-                style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: '8px', color: '#94a3b8', padding: '10px 20px', fontSize: '14px', fontWeight: 600, fontFamily: "'Outfit', sans-serif", cursor: 'pointer' }}
-              >
-                + Grant Options
-              </button>
-            </div>
           </div>
 
           {/* Tabs */}

@@ -36,4 +36,32 @@ export class LedgerController {
   async validateChain(@Param('tenantId') tenantId: string) {
     return this.ledgerService.validateLedgerChain(tenantId);
   }
+
+  @Get(':tenantId/holdings/:stakeholderId')
+  @Roles('ADMIN')
+  async getStakeholderHoldings(
+    @Param('tenantId') tenantId: string,
+    @Param('stakeholderId') stakeholderId: string,
+  ) {
+    return this.ledgerService.getStakeholderHoldings(tenantId, stakeholderId);
+  }
+
+  @Post(':tenantId/buyout/preview')
+  @Roles('ADMIN')
+  async buyoutPreview(
+    @Param('tenantId') tenantId: string,
+    @Body() body: { sellerId: string; buyerId: string; securityId: string; quantity: string; pricePerShare: string },
+  ) {
+    return this.ledgerService.buyoutPreview(tenantId, body);
+  }
+
+  @Post(':tenantId/buyout/commit')
+  @Roles('ADMIN')
+  async buyoutCommit(
+    @Param('tenantId') tenantId: string,
+    @Req() req: Request,
+    @Body() body: { sellerId: string; buyerId: string; securityId: string; quantity: string; pricePerShare: string },
+  ) {
+    return this.ledgerService.buyoutCommit(tenantId, body, req.userId);
+  }
 }

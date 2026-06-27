@@ -65,6 +65,11 @@ const makePrisma = () => {
         ledgerStore.push(entry);
         return Promise.resolve(entry);
       }),
+      count: vi.fn().mockImplementation(({ where }) => {
+        let entries = ledgerStore.filter((e) => e.tenantId === where.tenantId);
+        if (where.certificateNumber?.not === null) entries = entries.filter((e) => e.certificateNumber != null);
+        return Promise.resolve(entries.length);
+      }),
     },
     _store: ledgerStore,
     withTenant: vi.fn(async (_: string, fn: (tx: any) => Promise<any>) => fn(p)),

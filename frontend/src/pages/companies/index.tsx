@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
+import AlphaBadge from '../../components/AlphaBadge';
 
 const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1';
 const RELEASE_NOTES_SHEET_ID = '1Ht3pQQUXwt7-r0PY1G0Xdxobb-baFWO3yayC_l8nFsU';
@@ -61,6 +62,7 @@ function BuildingIcon() {
 interface Company {
   id: string;
   name: string;
+  iconUrl?: string | null;
   authorizedShares: string;
   parValue: string;
   createdAt: string;
@@ -85,6 +87,11 @@ export default function Companies() {
   const [releaseNotes, setReleaseNotes] = useState<ReleaseNote[] | null>(null);
   const [releaseNotesLoading, setReleaseNotesLoading] = useState(false);
   const [releaseNotesError, setReleaseNotesError] = useState('');
+  const [userInfoOpen, setUserInfoOpen] = useState(false);
+  const [userInfoName, setUserInfoName] = useState('');
+  const [userInfoEmail, setUserInfoEmail] = useState('');
+  const [userInfoSaving, setUserInfoSaving] = useState(false);
+  const [userInfoError, setUserInfoError] = useState('');
   const userMenuRef = useRef<HTMLDivElement>(null);
   const userMenuCloseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -157,6 +164,45 @@ export default function Companies() {
   function signOut() {
     localStorage.removeItem('ct_token');
     router.push('/login');
+  }
+
+  function openUserInfo() {
+    setUserMenuOpen(false);
+    const token = localStorage.getItem('ct_token');
+    if (token) {
+      try {
+        const payload = decodeJwt(token);
+        setUserInfoName((payload?.name as string) ?? '');
+        setUserInfoEmail((payload?.email as string) ?? '');
+      } catch {}
+    }
+    setUserInfoError('');
+    setUserInfoOpen(true);
+  }
+
+  async function saveUserInfo(e: React.FormEvent) {
+    e.preventDefault();
+    setUserInfoSaving(true);
+    setUserInfoError('');
+    const token = localStorage.getItem('ct_token');
+    if (!token) { setUserInfoSaving(false); return; }
+    try {
+      const res = await fetch(`${API}/auth/profile`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ name: userInfoName }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setUserInfoError(data.message || 'Failed to update profile'); return; }
+      localStorage.setItem('ct_token', data.token);
+      const updated = decodeJwt(data.token);
+      if (updated) setDisplayName((updated.name as string) || (updated.email as string));
+      setUserInfoOpen(false);
+    } catch {
+      setUserInfoError('Could not connect to server');
+    } finally {
+      setUserInfoSaving(false);
+    }
   }
 
   async function selectCompany(id: string) {
@@ -239,6 +285,7 @@ export default function Companies() {
         <nav style={{ background: '#0f172a', borderBottom: '1px solid #1e293b', padding: '0 32px', height: '60px', display: 'flex', alignItems: 'center', gap: '12px' }}>
           <PiconLogo size={28} />
           <span style={{ fontWeight: 700, fontSize: '18px', color: 'white' }}>CapTable</span>
+          <AlphaBadge />
           <div
             ref={userMenuRef}
             onMouseEnter={openUserMenu}
@@ -268,6 +315,16 @@ export default function Companies() {
                 overflow: 'hidden',
                 boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
               }}>
+                <button
+                  onClick={openUserInfo}
+                  data-testid="user-info-menu-item"
+                  style={{ display: 'block', width: '100%', padding: '10px 16px', fontSize: '13px', color: '#94a3b8', background: 'transparent', border: 'none', textAlign: 'left', fontFamily: "'Outfit', sans-serif", cursor: 'pointer' }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = '#0f172a'; e.currentTarget.style.color = 'white'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#94a3b8'; }}
+                >
+                  User Info
+                </button>
+                <div style={{ borderTop: '1px solid #334155' }} />
                 <a
                   href="mailto:support@getcaptable.com"
                   target="_blank"
@@ -346,9 +403,19 @@ export default function Companies() {
                   onMouseLeave={(e) => (e.currentTarget.style.borderColor = '#334155')}
                 >
                   <div style={{ display: 'flex', alignItems: 'flex-start', gap: '14px' }}>
-                    <div style={{ background: '#0f172a', borderRadius: '8px', padding: '10px', color: '#0066cc', flexShrink: 0 }}>
-                      <BuildingIcon />
-                    </div>
+                    {c.iconUrl ? (
+                      <img
+                        src={c.iconUrl}
+                        alt={`${c.name} icon`}
+                        width={42}
+                        height={42}
+                        style={{ borderRadius: '8px', objectFit: 'cover', flexShrink: 0 }}
+                      />
+                    ) : (
+                      <div style={{ width: '42px', height: '42px', borderRadius: '8px', background: '#0066cc', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px', fontWeight: 700, color: 'white', flexShrink: 0, userSelect: 'none' }}>
+                        {c.name.trim().charAt(0).toUpperCase()}
+                      </div>
+                    )}
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <p style={{ fontWeight: 700, fontSize: '17px', color: 'white', margin: '0 0 4px 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {c.name}
@@ -372,6 +439,79 @@ export default function Companies() {
           )}
         </div>
       </div>
+
+      {/* User Info modal */}
+      {userInfoOpen && (
+        <div
+          data-testid="user-info-backdrop"
+          onClick={() => !userInfoSaving && setUserInfoOpen(false)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'Outfit', sans-serif" }}
+        >
+          <div
+            data-testid="user-info-modal"
+            onClick={(e) => e.stopPropagation()}
+            style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: '12px', width: '420px', maxWidth: '90vw', boxShadow: '0 24px 64px rgba(0,0,0,0.6)' }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 24px', borderBottom: '1px solid #334155' }}>
+              <h2 style={{ margin: 0, fontSize: '17px', fontWeight: 700, color: 'white' }}>User Info</h2>
+              <button
+                data-testid="user-info-close"
+                onClick={() => !userInfoSaving && setUserInfoOpen(false)}
+                style={{ background: 'transparent', border: 'none', color: '#64748b', fontSize: '22px', cursor: 'pointer', lineHeight: 1, padding: '0 4px', fontFamily: "'Outfit', sans-serif" }}
+                onMouseEnter={(e) => { e.currentTarget.style.color = 'white'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.color = '#64748b'; }}
+              >×</button>
+            </div>
+            <form onSubmit={saveUserInfo} style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '18px' }}>
+              <div>
+                <label style={userInfoLabelStyle}>Email</label>
+                <input
+                  type="email"
+                  value={userInfoEmail}
+                  readOnly
+                  data-testid="user-info-email"
+                  style={{ ...userInfoInputStyle, color: '#64748b', cursor: 'default' }}
+                />
+              </div>
+              <div>
+                <label style={userInfoLabelStyle}>Display Name</label>
+                <input
+                  type="text"
+                  value={userInfoName}
+                  onChange={(e) => setUserInfoName(e.target.value)}
+                  placeholder="First Last"
+                  data-testid="user-info-name"
+                  style={userInfoInputStyle}
+                  autoFocus
+                />
+              </div>
+              {userInfoError && (
+                <div style={{ background: '#2a1215', border: '1px solid #5c2b2e', borderRadius: '8px', padding: '10px 14px', fontSize: '14px', color: '#ff8a80' }}>
+                  {userInfoError}
+                </div>
+              )}
+              <div style={{ display: 'flex', gap: '12px' }}>
+                <button
+                  type="button"
+                  onClick={() => !userInfoSaving && setUserInfoOpen(false)}
+                  disabled={userInfoSaving}
+                  style={{ flex: 1, background: 'transparent', border: '1px solid #334155', borderRadius: '8px', color: '#94a3b8', padding: '10px', fontSize: '14px', fontWeight: 600, fontFamily: "'Outfit', sans-serif", cursor: userInfoSaving ? 'not-allowed' : 'pointer' }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={userInfoSaving}
+                  data-testid="user-info-save"
+                  style={{ flex: 2, background: userInfoSaving ? '#004499' : '#0066cc', border: 'none', borderRadius: '8px', color: 'white', padding: '10px', fontSize: '14px', fontWeight: 600, fontFamily: "'Outfit', sans-serif", cursor: userInfoSaving ? 'not-allowed' : 'pointer' }}
+                >
+                  {userInfoSaving ? 'Saving…' : 'Save'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Release Notes modal */}
       {releaseNotesOpen && (
@@ -577,6 +717,29 @@ const tooltipStyle: React.CSSProperties = {
   width: '220px',
   boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
   pointerEvents: 'none',
+};
+
+const userInfoLabelStyle: React.CSSProperties = {
+  display: 'block',
+  fontSize: '12px',
+  fontWeight: 600,
+  color: '#94a3b8',
+  marginBottom: '6px',
+  textTransform: 'uppercase',
+  letterSpacing: '0.4px',
+};
+
+const userInfoInputStyle: React.CSSProperties = {
+  width: '100%',
+  background: '#0f172a',
+  border: '1px solid #334155',
+  borderRadius: '8px',
+  padding: '10px 12px',
+  fontSize: '14px',
+  color: 'white',
+  fontFamily: "'Outfit', sans-serif",
+  outline: 'none',
+  boxSizing: 'border-box',
 };
 
 function InfoIcon() {

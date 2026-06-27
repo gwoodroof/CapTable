@@ -11,6 +11,12 @@ export interface LedgerNotificationParams {
   securityLabel: string;
 }
 
+export interface PostmarkAttachment {
+  Name: string;
+  Content: string; // base64-encoded
+  ContentType: string;
+}
+
 @Injectable()
 export class EmailService {
   private client: postmark.ServerClient | null = null;
@@ -27,7 +33,7 @@ export class EmailService {
     this.frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
   }
 
-  async sendLedgerNotification(params: LedgerNotificationParams): Promise<void> {
+  async sendLedgerNotification(params: LedgerNotificationParams, attachments?: PostmarkAttachment[]): Promise<void> {
     if (!this.client) return;
     const { to, stakeholderName, companyName, tenantId, transactionType, quantity, securityLabel } = params;
 
@@ -48,6 +54,7 @@ export class EmailService {
       From: this.fromAddress,
       To: to,
       Subject: `Equity update: ${txLabel} — ${companyName}`,
+      ...(attachments?.length ? { Attachments: attachments } : {}),
       HtmlBody: `
         <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:32px 24px;color:#1a1a1a">
           <h2 style="margin-top:0">New equity transaction recorded</h2>

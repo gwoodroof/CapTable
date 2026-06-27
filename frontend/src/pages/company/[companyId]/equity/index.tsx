@@ -72,6 +72,8 @@ interface Grant {
   strikePrice: string | null;
   grantDate: string;
   boardApprovalDate: string | null;
+  terminatedAt: string | null;
+  terminationType: string | null;
   security: { type: string; name: string | null };
   vestingSchedule: VestingSchedule;
 }
@@ -91,9 +93,11 @@ interface ChartPoint {
 interface ProjectedData {
   points: ChartPoint[];
   grantLabels: string[];
+  terminationLabels: string[];
   todayLabel: string;
   totalProjected: number;
   vestedToDate: number;
+  allTerminated: boolean;
 }
 
 function buildProjectedVestingData(grants: Grant[]): ProjectedData | null {
@@ -104,41 +108,49 @@ function buildProjectedVestingData(grants: Grant[]): ProjectedData | null {
   today.setHours(0, 0, 0, 0);
 
   const events: Array<{ date: Date; delta: number }> = [];
+  const terminationDates: Date[] = [];
 
   for (const grant of optionGrants) {
     const grantDate = new Date(grant.grantDate);
     const totalQty = Number(grant.quantity);
     const { cliffMonths, vestingDurationMonths, vestingFrequency } = grant.vestingSchedule;
+    const cutoff = grant.terminatedAt ? new Date(grant.terminatedAt) : null;
+    if (cutoff) terminationDates.push(cutoff);
 
     events.push({ date: grantDate, delta: 0 });
 
     const cliffDate = addMonths(grantDate, cliffMonths);
-    const cliffQty = Math.round((totalQty * cliffMonths) / vestingDurationMonths);
-    events.push({ date: cliffDate, delta: cliffQty });
+    if (!cutoff || cliffDate <= cutoff) {
+      const cliffQty = Math.round((totalQty * cliffMonths) / vestingDurationMonths);
+      events.push({ date: cliffDate, delta: cliffQty });
 
-    const remainingQty = totalQty - cliffQty;
-    const remainingMonths = vestingDurationMonths - cliffMonths;
-    const periodMonths = vestingFrequency === 'MONTHLY' ? 1 : vestingFrequency === 'QUARTERLY' ? 3 : 12;
-    const numPeriods = Math.round(remainingMonths / periodMonths);
-    if (numPeriods > 0) {
-      const perPeriod = Math.round(remainingQty / numPeriods);
-      for (let i = 1; i <= numPeriods; i++) {
-        const vestDate = addMonths(cliffDate, i * periodMonths);
-        const qty = i === numPeriods ? remainingQty - perPeriod * (numPeriods - 1) : perPeriod;
-        events.push({ date: vestDate, delta: qty });
+      const remainingQty = totalQty - cliffQty;
+      const remainingMonths = vestingDurationMonths - cliffMonths;
+      const periodMonths = vestingFrequency === 'MONTHLY' ? 1 : vestingFrequency === 'QUARTERLY' ? 3 : 12;
+      const numPeriods = Math.round(remainingMonths / periodMonths);
+      if (numPeriods > 0) {
+        const perPeriod = Math.round(remainingQty / numPeriods);
+        for (let i = 1; i <= numPeriods; i++) {
+          const vestDate = addMonths(cliffDate, i * periodMonths);
+          if (cutoff && vestDate > cutoff) break;
+          const qty = i === numPeriods ? remainingQty - perPeriod * (numPeriods - 1) : perPeriod;
+          events.push({ date: vestDate, delta: qty });
+        }
       }
     }
   }
 
+  // Ensure tick marks exist for today and each termination date
+  const markerDates = [today, ...terminationDates];
+  for (const d of markerDates) {
+    const lbl = format(d, 'MMM yyyy');
+    if (!events.some((ev) => format(ev.date, 'MMM yyyy') === lbl)) {
+      events.push({ date: d, delta: 0 });
+    }
+  }
   events.sort((a, b) => a.date.getTime() - b.date.getTime());
 
   const todayLabel = format(today, 'MMM yyyy');
-  const hasTodayTick = events.some((ev) => format(ev.date, 'MMM yyyy') === todayLabel);
-  if (!hasTodayTick) {
-    events.push({ date: today, delta: 0 });
-    events.sort((a, b) => a.date.getTime() - b.date.getTime());
-  }
-
   let cumulative = 0;
   let vestedToDate = 0;
   const points: ChartPoint[] = [];
@@ -154,12 +166,17 @@ function buildProjectedVestingData(grants: Grant[]): ProjectedData | null {
     });
   }
 
+  const allTerminated = optionGrants.every((g) => !!g.terminatedAt);
+  const terminationLabels = [...new Set(terminationDates.map((d) => format(d, 'MMM yyyy')))];
+
   return {
     points,
     grantLabels: optionGrants.map((g) => format(new Date(g.grantDate), 'MMM yyyy')),
+    terminationLabels,
     todayLabel,
     totalProjected: cumulative,
     vestedToDate,
+    allTerminated,
   };
 }
 
@@ -389,15 +406,29 @@ export default function MyEquity() {
                       </thead>
                       <tbody>
                         {grants.map((g, i) => (
-                          <tr key={g.id} style={{ borderBottom: i < grants.length - 1 ? '1px solid #0f172a' : 'none' }}>
+                          <tr key={g.id} style={{ borderBottom: i < grants.length - 1 ? '1px solid #0f172a' : 'none', background: g.terminatedAt ? 'rgba(239,68,68,0.04)' : 'transparent' }}>
                             <td style={{ padding: '12px 16px', color: 'white', fontWeight: 500 }}>{g.security.name ?? g.security.type.replace(/_/g, ' ')}</td>
-                            <td style={{ padding: '12px 16px', color: '#f59e0b', fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>{fmt(Number(g.quantity))}</td>
+                            <td style={{ padding: '12px 16px', color: g.terminatedAt ? '#64748b' : '#f59e0b', fontWeight: 600, fontVariantNumeric: 'tabular-nums', textDecoration: g.terminatedAt ? 'line-through' : 'none' }}>{fmt(Number(g.quantity))}</td>
                             <td style={{ padding: '12px 16px', color: '#94a3b8' }}>{g.strikePrice ? `$${Number(g.strikePrice).toFixed(4)}` : '—'}</td>
                             <td style={{ padding: '12px 16px', color: '#94a3b8' }}>{fmtDate(g.grantDate)}</td>
                             <td style={{ padding: '12px 16px', color: '#94a3b8' }}>{g.boardApprovalDate ? fmtDate(g.boardApprovalDate) : '—'}</td>
-                            <td style={{ padding: '12px 16px', color: '#94a3b8', fontSize: '12px' }}>
-                              {g.vestingSchedule.cliffMonths}mo cliff / {g.vestingSchedule.vestingDurationMonths}mo{' '}
-                              <span style={{ color: '#475569' }}>({g.vestingSchedule.vestingFrequency.toLowerCase()})</span>
+                            <td style={{ padding: '12px 16px', fontSize: '12px' }}>
+                              {g.terminatedAt ? (
+                                <div>
+                                  <span style={{ background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.4)', borderRadius: '4px', padding: '2px 8px', fontSize: '11px', color: '#f87171', fontWeight: 700, letterSpacing: '0.3px' }}>
+                                    VESTING FROZEN
+                                  </span>
+                                  <div style={{ color: '#64748b', marginTop: '4px' }}>Effective {fmtDate(g.terminatedAt)}</div>
+                                  <div style={{ color: '#475569', marginTop: '2px', fontSize: '11px' }}>
+                                    {g.vestingSchedule.cliffMonths}mo cliff / {g.vestingSchedule.vestingDurationMonths}mo ({g.vestingSchedule.vestingFrequency.toLowerCase()})
+                                  </div>
+                                </div>
+                              ) : (
+                                <span style={{ color: '#94a3b8' }}>
+                                  {g.vestingSchedule.cliffMonths}mo cliff / {g.vestingSchedule.vestingDurationMonths}mo{' '}
+                                  <span style={{ color: '#475569' }}>({g.vestingSchedule.vestingFrequency.toLowerCase()})</span>
+                                </span>
+                              )}
                             </td>
                           </tr>
                         ))}
@@ -413,9 +444,14 @@ export default function MyEquity() {
                   <h2 style={{ fontSize: '13px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px', margin: '0 0 16px 0' }}>Vesting Timeline</h2>
                   <div style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: '12px', padding: '24px 16px 16px' }}>
                     <div style={{ display: 'flex', gap: '24px', marginBottom: '20px', paddingLeft: '8px', flexWrap: 'wrap' }}>
-                      <Chip label="Total Projected" value={fmt(chartResult.totalProjected)} color="#f59e0b" />
+                      <Chip label={chartResult.allTerminated ? 'Total Vested' : 'Total Projected'} value={fmt(chartResult.totalProjected)} color="#f59e0b" />
                       <Chip label="Vested to Date" value={fmt(chartResult.vestedToDate)} color="#10b981" />
-                      <Chip label="Remaining" value={fmt(Math.max(0, chartResult.totalProjected - chartResult.vestedToDate))} color="#64748b" />
+                      {!chartResult.allTerminated && (
+                        <Chip label="Remaining" value={fmt(Math.max(0, chartResult.totalProjected - chartResult.vestedToDate))} color="#64748b" />
+                      )}
+                      {chartResult.allTerminated && (
+                        <Chip label="Vesting Ended" value={chartResult.terminationLabels[0] ?? '—'} color="#ef4444" />
+                      )}
                       <Chip
                         label="% Vested"
                         value={chartResult.totalProjected > 0 ? `${((chartResult.vestedToDate / chartResult.totalProjected) * 100).toFixed(1)}%` : '0%'}
@@ -453,27 +489,39 @@ export default function MyEquity() {
                         <Tooltip content={<VestTooltip />} />
                         {chartResult.grantLabels.map((label) => (
                           <ReferenceLine
-                            key={label}
+                            key={`grant-${label}`}
                             x={label}
                             stroke="#0066cc"
                             strokeDasharray="4 3"
                             label={{ value: 'Grant', fill: '#0066cc', fontSize: 10, fontFamily: "'Outfit', sans-serif" }}
                           />
                         ))}
-                        <ReferenceLine
-                          x={chartResult.todayLabel}
-                          stroke="#0066cc"
-                          strokeWidth={1.5}
-                          strokeDasharray="4 3"
-                          label={{ value: 'Today', fill: '#0066cc', fontSize: 10, fontFamily: "'Outfit', sans-serif", position: 'top' }}
-                        />
+                        {!chartResult.allTerminated && (
+                          <ReferenceLine
+                            x={chartResult.todayLabel}
+                            stroke="#0066cc"
+                            strokeWidth={1.5}
+                            strokeDasharray="4 3"
+                            label={{ value: 'Today', fill: '#0066cc', fontSize: 10, fontFamily: "'Outfit', sans-serif", position: 'top' }}
+                          />
+                        )}
+                        {chartResult.terminationLabels.map((label) => (
+                          <ReferenceLine
+                            key={`term-${label}`}
+                            x={label}
+                            stroke="#ef4444"
+                            strokeWidth={1.5}
+                            strokeDasharray="4 3"
+                            label={{ value: 'Terminated', fill: '#ef4444', fontSize: 10, fontFamily: "'Outfit', sans-serif", position: 'top' }}
+                          />
+                        ))}
                         <Area type="stepAfter" dataKey="scheduled" stroke="#475569" strokeWidth={1} strokeDasharray="4 3" fill="url(#scheduledGrad)" dot={false} activeDot={false} connectNulls />
                         <Area type="stepAfter" dataKey="earned" stroke="#f59e0b" strokeWidth={2} fill="url(#earnedGrad)" dot={false} activeDot={{ r: 4, fill: '#f59e0b', stroke: '#0f172a', strokeWidth: 2 }} connectNulls={false} />
                       </AreaChart>
                     </ResponsiveContainer>
 
                     <p style={{ margin: '12px 0 0 0', fontSize: '11px', color: '#475569', textAlign: 'center' }}>
-                      Amber = earned · grey dashed = scheduled future vesting · blue dashed = grant date / today
+                      Amber = earned · {chartResult.allTerminated ? 'red line = vesting ended' : 'grey dashed = scheduled future vesting · blue dashed = today'}
                     </p>
                   </div>
                 </section>
@@ -482,13 +530,15 @@ export default function MyEquity() {
           )}
 
           {/* Contact notice */}
-          <div
-            data-testid="equity-contact-notice"
-            style={{ marginTop: '48px', background: '#1e293b', border: '1px solid #334155', borderLeft: '3px solid #0066cc', borderRadius: '8px', padding: '16px 20px' }}
-          >
-            <p style={{ margin: 0, fontSize: '14px', color: '#94a3b8', lineHeight: 1.6 }}>
-              If you have questions about this information, or wish to make changes, please contact your manager or an administrator.
-            </p>
+          <div style={{ maxWidth: '900px' }}>
+            <div
+              data-testid="equity-contact-notice"
+              style={{ marginTop: '48px', background: '#1e293b', border: '1px solid #334155', borderLeft: '3px solid #0066cc', borderRadius: '8px', padding: '16px 20px' }}
+            >
+              <p style={{ margin: 0, fontSize: '14px', color: '#94a3b8', lineHeight: 1.6 }}>
+                If you have questions about this information, or wish to make changes, please contact your manager or an administrator.
+              </p>
+            </div>
           </div>
         </div>
       </div>

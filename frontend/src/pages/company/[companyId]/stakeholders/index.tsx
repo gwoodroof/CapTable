@@ -59,6 +59,14 @@ export default function StakeholdersList() {
   const [error, setError] = useState('');
   const [updatingId, setUpdatingId] = useState<string | null>(null);
 
+  // Add Stakeholder modal state
+  const [addOpen, setAddOpen] = useState(false);
+  const [addName, setAddName] = useState('');
+  const [addType, setAddType] = useState<'INDIVIDUAL' | 'ENTITY'>('INDIVIDUAL');
+  const [addEmail, setAddEmail] = useState('');
+  const [addError, setAddError] = useState('');
+  const [addSubmitting, setAddSubmitting] = useState(false);
+
   useEffect(() => {
     if (!companyId) return;
     const token = localStorage.getItem('ct_token');
@@ -108,6 +116,44 @@ export default function StakeholdersList() {
       }
     } finally {
       setUpdatingId(null);
+    }
+  }
+
+  function openAddModal() {
+    setAddName('');
+    setAddType('INDIVIDUAL');
+    setAddEmail('');
+    setAddError('');
+    setAddOpen(true);
+  }
+
+  async function addStakeholder(e: React.FormEvent) {
+    e.preventDefault();
+    if (!addName.trim()) return;
+    const token = localStorage.getItem('ct_token');
+    if (!token) return;
+    setAddSubmitting(true);
+    setAddError('');
+    try {
+      const body: { name: string; type: string; email?: string } = { name: addName.trim(), type: addType };
+      if (addEmail.trim()) body.email = addEmail.trim();
+      const res = await fetch(`${API}/stakeholders`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify(body),
+      });
+      if (res.status === 409) {
+        setAddError('A stakeholder with that email address already exists.');
+        return;
+      }
+      if (!res.ok) throw new Error('Failed to create stakeholder');
+      const created = await res.json();
+      setStakeholders((prev) => [{ ...created, membership: null, isStakeholder: true }, ...prev]);
+      setAddOpen(false);
+    } catch {
+      setAddError('Something went wrong. Please try again.');
+    } finally {
+      setAddSubmitting(false);
     }
   }
 
@@ -172,6 +218,15 @@ export default function StakeholdersList() {
                 Stakeholders
                 <span style={{ marginLeft: '8px', fontSize: '13px', color: '#475569', fontWeight: 400 }}>({stakeholders.length})</span>
               </h2>
+              {isAdmin && (
+                <button
+                  data-testid="add-stakeholder-button"
+                  onClick={openAddModal}
+                  style={{ background: '#0066cc', border: 'none', borderRadius: '8px', color: 'white', padding: '8px 16px', fontSize: '13px', fontWeight: 600, fontFamily: "'Outfit', sans-serif", cursor: 'pointer' }}
+                >
+                  Add Stakeholder
+                </button>
+              )}
             </div>
 
             {stakeholders.length === 0 ? (
@@ -249,9 +304,111 @@ export default function StakeholdersList() {
           </div>
         </div>
       </div>
+      {/* Add Stakeholder modal */}
+      {addOpen && (
+        <div
+          onClick={() => setAddOpen(false)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50, padding: '24px' }}
+        >
+          <div
+            data-testid="add-stakeholder-modal"
+            onClick={(e) => e.stopPropagation()}
+            style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: '16px', width: '100%', maxWidth: '480px' }}
+          >
+            <div style={{ padding: '20px 24px', borderBottom: '1px solid #334155', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <h2 style={{ margin: 0, fontWeight: 700, fontSize: '18px', color: 'white' }}>Add Stakeholder</h2>
+              <button onClick={() => setAddOpen(false)} style={{ background: 'transparent', border: 'none', color: '#64748b', fontSize: '20px', cursor: 'pointer', lineHeight: 1, padding: '4px 8px' }}>×</button>
+            </div>
+
+            <form onSubmit={addStakeholder} style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div>
+                <label style={addLabelStyle}>Name <span style={{ color: '#f87171' }}>*</span></label>
+                <input
+                  data-testid="add-stakeholder-name"
+                  type="text"
+                  value={addName}
+                  onChange={(e) => setAddName(e.target.value)}
+                  placeholder="e.g. Jane Smith or Acme Ventures LLC"
+                  required
+                  style={addInputStyle}
+                />
+              </div>
+
+              <div>
+                <label style={addLabelStyle}>Type</label>
+                <select
+                  data-testid="add-stakeholder-type"
+                  value={addType}
+                  onChange={(e) => setAddType(e.target.value as 'INDIVIDUAL' | 'ENTITY')}
+                  style={addInputStyle}
+                >
+                  <option value="INDIVIDUAL">Individual</option>
+                  <option value="ENTITY">Entity</option>
+                </select>
+              </div>
+
+              <div>
+                <label style={addLabelStyle}>Email <span style={{ color: '#475569', fontWeight: 400 }}>(optional)</span></label>
+                <input
+                  data-testid="add-stakeholder-email"
+                  type="email"
+                  value={addEmail}
+                  onChange={(e) => setAddEmail(e.target.value)}
+                  placeholder="jane@example.com"
+                  style={addInputStyle}
+                />
+              </div>
+
+              {addError && (
+                <p style={{ margin: 0, color: '#f87171', fontSize: '13px' }}>{addError}</p>
+              )}
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', paddingTop: '4px' }}>
+                <button
+                  type="button"
+                  onClick={() => setAddOpen(false)}
+                  style={{ background: 'transparent', border: '1px solid #334155', borderRadius: '8px', color: '#94a3b8', padding: '9px 18px', fontSize: '14px', fontWeight: 500, fontFamily: "'Outfit', sans-serif", cursor: 'pointer' }}
+                >
+                  Cancel
+                </button>
+                <button
+                  data-testid="add-stakeholder-submit"
+                  type="submit"
+                  disabled={addSubmitting || !addName.trim()}
+                  style={{ background: addSubmitting || !addName.trim() ? '#334155' : '#0066cc', border: 'none', borderRadius: '8px', color: 'white', padding: '9px 18px', fontSize: '14px', fontWeight: 600, fontFamily: "'Outfit', sans-serif", cursor: addSubmitting || !addName.trim() ? 'not-allowed' : 'pointer' }}
+                >
+                  {addSubmitting ? 'Adding…' : 'Add Stakeholder'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </>
   );
 }
+
+const addLabelStyle: React.CSSProperties = {
+  display: 'block',
+  marginBottom: '6px',
+  fontSize: '12px',
+  fontWeight: 600,
+  color: '#94a3b8',
+  textTransform: 'uppercase',
+  letterSpacing: '0.4px',
+};
+
+const addInputStyle: React.CSSProperties = {
+  width: '100%',
+  background: '#0f172a',
+  border: '1px solid #334155',
+  borderRadius: '8px',
+  color: 'white',
+  padding: '10px 12px',
+  fontSize: '14px',
+  fontFamily: "'Outfit', sans-serif",
+  boxSizing: 'border-box',
+};
 
 const cell: React.CSSProperties = {
   padding: '12px 16px',
