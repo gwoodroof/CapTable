@@ -54,7 +54,7 @@ export class EmailService {
       From: this.fromAddress,
       To: to,
       Subject: `Equity update: ${txLabel} — ${companyName}`,
-      ...(attachments?.length ? { Attachments: attachments } : {}),
+      ...(attachments?.length ? { Attachments: attachments.map(a => ({ ...a, ContentID: null })) } : {}),
       HtmlBody: `
         <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:32px 24px;color:#1a1a1a">
           <h2 style="margin-top:0">New equity transaction recorded</h2>
