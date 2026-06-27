@@ -1,5 +1,7 @@
 # FEATURES & ENHANCEMENTS
 
+- [ ] Admins on the 'Register New Investment' page should be able to pick from existing stakeholders or create a new one, like they can on the 'grant options' page. 
+
 - [ ] Admins should have access to an 'exercise options' wizard, which will enable the following:
     Vesting Verification: Checking exactly how many options are vested and exercisable as of a specific date.
     Payment & Taxation: Calculating the total strike price ($\text{options} \times \text{strike price}$).

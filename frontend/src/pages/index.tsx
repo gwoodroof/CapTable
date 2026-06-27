@@ -345,7 +345,7 @@ export default function Home() {
               <span style={styles.heroAccent}>built for founders</span>
             </h1>
             <p style={styles.heroLead}>
-              Precise, auditable cap table tracking with an immutable ledger.
+              Precise, auditable, open source cap table management with an immutable ledger.
             </p>
             <p style={styles.heroSub}>
               Multi-tenant SaaS with strict data isolation and financial-grade precision math.
