@@ -1,6 +1,17 @@
 # FEATURES & ENHANCEMENTS
 
-- [ ] Admins on the 'Register New Investment' page should be able to pick from existing stakeholders or create a new one, like they can on the 'grant options' page. 
+- [ ] Admins on the 'Register New Investment' page (`/company/[id]/investments/new`) should be able to pick from existing stakeholders or create a new one, mirroring the pattern on the 'Grant Options' page (`/company/[id]/grants/new`).
+
+  **Investor section behavior:**
+  - Add a `<select>` dropdown at the top of the Investor section, defaulting to "— Create new investor —", then listing all stakeholders (name + email, same as Grant Options).
+  - **Existing stakeholder selected:** Show a read-only info card (name, email, type) — same card style as Grant Options. Show the ENTITY / INDIVIDUAL type radio but **disabled** (reflecting their existing type). Skip the `POST /stakeholders` call on submit; use the selected stakeholder's ID directly.
+  - **"Create new investor" selected:** Show name, email, and type radio fields exactly as today. Create the stakeholder on submit.
+
+  **Security section:** Unchanged — always creates a new security instrument.
+
+  **Edge cases:**
+  - A stakeholder can appear multiple times as an investor (multiple investments across rounds). This is expected and fine.
+  - If the selected stakeholder has no email, the email field in the info card is simply omitted.
 
 - [ ] Admins should have access to an 'exercise options' wizard, which will enable the following:
     Vesting Verification: Checking exactly how many options are vested and exercisable as of a specific date.
