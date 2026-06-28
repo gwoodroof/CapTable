@@ -1,7 +1,7 @@
 import { Controller, Get, Post, Body, Req, UseGuards, HttpCode, BadRequestException } from '@nestjs/common';
 import { Request } from 'express';
 import { GrantService } from './grant.service';
-import { VestingService } from './vesting.service';
+import { VestingService, ExerciseCommitInput } from './vesting.service';
 import { RolesGuard, Roles } from '../../common/guards/roles.guard';
 
 @Controller('grants')
@@ -69,6 +69,38 @@ export class GrantController {
       accelerationMethod: body.accelerationMethod ?? 'shares',
       accelerationValue: body.accelerationValue ?? 0,
     });
+  }
+
+  @Post('exercise/counts')
+  @Roles('ADMIN')
+  @HttpCode(200)
+  async exerciseCounts(
+    @Req() req: Request,
+    @Body() body: { grantId: string; asOfDate: string },
+  ) {
+    if (!body.grantId) throw new BadRequestException('grantId is required');
+    if (!body.asOfDate) throw new BadRequestException('asOfDate is required');
+    return this.vestingService.exerciseCounts(req.tenantId!, body.grantId, new Date(body.asOfDate));
+  }
+
+  @Post('exercise/commit')
+  @Roles('ADMIN')
+  @HttpCode(200)
+  async exerciseCommit(
+    @Req() req: Request,
+    @Body() body: { grantId: string; asOfDate: string; quantity: string; issuanceSecurityId: string },
+  ) {
+    if (!body.grantId) throw new BadRequestException('grantId is required');
+    if (!body.asOfDate) throw new BadRequestException('asOfDate is required');
+    if (!body.quantity) throw new BadRequestException('quantity is required');
+    if (!body.issuanceSecurityId) throw new BadRequestException('issuanceSecurityId is required');
+    const input: ExerciseCommitInput = {
+      grantId: body.grantId,
+      asOfDate: new Date(body.asOfDate),
+      quantity: body.quantity,
+      issuanceSecurityId: body.issuanceSecurityId,
+    };
+    return this.vestingService.exerciseCommit(req.tenantId!, req.userId!, input);
   }
 
   @Post('offboard/commit')

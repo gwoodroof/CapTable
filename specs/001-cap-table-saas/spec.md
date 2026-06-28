@@ -478,6 +478,43 @@
 
 ---
 
+### User Story 3.24 - Exercise Options Wizard (Priority: P1)
+
+**As an** admin, **I want to** exercise a stakeholder's vested options through a guided wizard, **so that** the ledger accurately reflects the conversion of options into shares with a complete audit trail.
+
+**Why this priority**: Option exercises are a core equity event. Without this, admins must manually create EXERCISE + ISSUANCE entries, which is error-prone and bypasses validation of exercisable quantities.
+
+**Independent Test**: Open the Actions menu on the Ledger page. Click "Exercise Options". The wizard should open at Step 1. Select an options holder and a grant; click Next. Step 2 should show an as-of date input. Enter a date after the cliff; vesting counts (total vested, already exercised, exercisable) should appear. Enter a valid quantity. Click Next. Step 3 should show the exercise cost and a security dropdown. Select a security and click "Review →". Step 4 should show a confirmation summary. Click "Confirm & Apply"; the ledger should refresh with two new entries (EXERCISE + ISSUANCE).
+
+**Acceptance Scenarios**:
+
+1. **Given** an admin is on the Ledger page, **Then** an "Exercise Options" item appears in the Actions menu dropdown.
+2. **Given** the admin clicks "Exercise Options", **Then** a 4-step modal wizard opens showing Step 1 with a stakeholder dropdown (only stakeholders with grants are listed).
+3. **Given** a stakeholder is selected in Step 1, **Then** a grant dropdown appears showing that stakeholder's grants with date, option count, and strike price.
+4. **Given** both a stakeholder and grant are selected, **Then** the "Next →" button on Step 1 is enabled.
+5. **Given** the admin advances to Step 2 and enters an as-of date, **Then** the backend is called and displays: total vested as of date, already exercised, and exercisable (= vested − exercised).
+6. **Given** exercisable = 0, **Then** an explanatory message is shown and the "Next →" button on Step 2 is disabled.
+7. **Given** exercisable > 0, **Then** a quantity input appears with the max set to exercisable; entering a value > max shows a validation error and disables "Next →".
+8. **Given** the admin advances to Step 3, **Then** the exercise cost (quantity × strike price) is displayed read-only, and a dropdown of the company's existing securities is shown.
+9. **Given** the admin selects a security in Step 3, **Then** the "Review →" button is enabled.
+10. **Given** the admin advances to Step 4, **Then** a read-only confirmation summary shows: stakeholder, grant date, exercise date (= as-of date), quantity, strike price, total payment due, and two ledger entries to be created (EXERCISE − for options, ISSUANCE + for shares).
+11. **Given** the admin clicks "Confirm & Apply", **Then** `POST /grants/exercise/commit` is called; on success the wizard shows a completion message and the ledger table refreshes.
+12. **Given** the commit succeeds and the stakeholder has an email, **Then** a stock certificate PDF is generated and emailed fire-and-forget for both the EXERCISE and ISSUANCE ledger entries (via the existing `recordTransaction` path).
+
+**Backend Endpoints**:
+- `POST /api/v1/grants/exercise/counts` — accepts `{ grantId, asOfDate }`; returns `{ grant: { id, stakeholderId, stakeholderName, stakeholderEmail, securityId, securityName, strikePrice, grantDate }, totalVested, alreadyExercised, exercisable }`.
+- `POST /api/v1/grants/exercise/commit` — accepts `{ grantId, asOfDate, quantity, issuanceSecurityId }`; validates exercisable ≥ quantity; creates EXERCISE entry (grant's option security, quantity, strikePrice as pricePerShare) and ISSUANCE entry (issuanceSecurityId, quantity) atomically via two `recordTransaction` calls; returns `{ exerciseEntry, issuanceEntry }`.
+
+**Key Implementation Notes**:
+- `VestingService.exerciseCounts()` computes totalVested by filtering `computeVestingEvents()` to dates ≤ min(asOfDate, grant.terminatedAt). Already-exercised is summed from `LedgerTransaction` where `transactionType = EXERCISE` and `grantId = grantId`. Both sums use Decimal.js arithmetic (not JS float) to prevent drift with non-divisible grant quantities.
+- `VestingService.exerciseCommit()` calls `exerciseCounts()` for re-validation, then calls `ledgerService.recordTransaction()` twice.
+- Frontend state prefixed `ex*` in `ledger/index.tsx`; grants fetched from `GET /grants` on wizard open and grouped by stakeholder client-side.
+- Quantity comparisons on the frontend use a `1e-9` epsilon (`qtyNum > exercisable + 1e-9`) as defence-in-depth against JSON float serialization drift.
+- `data-testid` attributes: `exercise-wizard`, `exercise-step-1`, `exercise-step-2`, `exercise-step-3`, `exercise-step-4`, `exercise-stakeholder-select`, `exercise-grant-select`, `exercise-as-of-date`, `exercise-quantity-input`, `exercise-issuance-security-select`, `exercise-next-step-1`, `exercise-next-step-2`, `exercise-next-step-3`, `exercise-confirm-button`.
+- 17 unit tests added in `vesting.service.spec.ts`; 7 E2E tests added in `ledger.spec.ts`.
+
+---
+
 ### User Story 3.17 - Company Icons on the /companies List (Priority: P2)
 
 **As a** user on the `/companies` page, **I want to** see each company's icon (or monogram fallback) on its card, **so that** companies are visually distinct and the list feels consistent with the rest of the app.

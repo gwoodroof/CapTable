@@ -3,6 +3,7 @@
  * User Story 3.19 — Options Holder Offboarding Wizard
  * User Story 3.21 — Investor Buyout Wizard
  * User Story 3.23 — Stakeholder Picker on Register New Investment
+ * User Story 3.24 — Exercise Options Wizard
  */
 import { test, expect } from '../fixtures';
 
@@ -20,6 +21,7 @@ test.describe('User Story 3.18 — Actions menu on Ledger tab', () => {
     await expect(adminPage.getByTestId('actions-add-investment')).toBeVisible();
     await expect(adminPage.getByTestId('actions-grant-options')).toBeVisible();
     await expect(adminPage.getByTestId('actions-offboard-options-holder')).toBeVisible();
+    await expect(adminPage.getByTestId('actions-exercise-options')).toBeVisible();
   });
 
   test('standalone "+ Add Investment" and "+ Grant Options" buttons are gone', async ({ adminPage, adminMeta }) => {
@@ -240,6 +242,104 @@ test.describe('User Story 3.23 — Stakeholder Picker on Register New Investment
         await select.selectOption('');
         await expect(adminPage.getByTestId('investor-name')).toBeVisible();
         await expect(adminPage.getByTestId('investor-email')).toBeVisible();
+      }
+    }
+  });
+});
+
+test.describe('User Story 3.24 — Exercise Options Wizard', () => {
+  test('"Exercise Options" option appears in the Actions dropdown', async ({ adminPage, adminMeta }) => {
+    await adminPage.goto(`/company/${adminMeta.tenantId}/ledger`);
+    await adminPage.getByTestId('actions-menu-button').click();
+
+    await expect(adminPage.getByTestId('actions-exercise-options')).toBeVisible();
+  });
+
+  test('clicking Exercise Options opens the exercise wizard', async ({ adminPage, adminMeta }) => {
+    await adminPage.goto(`/company/${adminMeta.tenantId}/ledger`);
+    await adminPage.getByTestId('actions-menu-button').click();
+    await adminPage.getByTestId('actions-exercise-options').click();
+
+    await expect(adminPage.getByTestId('exercise-wizard')).toBeVisible({ timeout: 10_000 });
+    await expect(adminPage.getByTestId('exercise-step-1')).toBeVisible();
+  });
+
+  test('Step 1 shows the options holder and grant selects', async ({ adminPage, adminMeta }) => {
+    await adminPage.goto(`/company/${adminMeta.tenantId}/ledger`);
+    await adminPage.getByTestId('actions-menu-button').click();
+    await adminPage.getByTestId('actions-exercise-options').click();
+
+    await expect(adminPage.getByTestId('exercise-stakeholder-select')).toBeVisible({ timeout: 10_000 });
+  });
+
+  test('Step 1 Next button is disabled when no grant is selected', async ({ adminPage, adminMeta }) => {
+    await adminPage.goto(`/company/${adminMeta.tenantId}/ledger`);
+    await adminPage.getByTestId('actions-menu-button').click();
+    await adminPage.getByTestId('actions-exercise-options').click();
+
+    await expect(adminPage.getByTestId('exercise-next-step-1')).toBeDisabled({ timeout: 10_000 });
+  });
+
+  test('wizard can be closed with the × button', async ({ adminPage, adminMeta }) => {
+    await adminPage.goto(`/company/${adminMeta.tenantId}/ledger`);
+    await adminPage.getByTestId('actions-menu-button').click();
+    await adminPage.getByTestId('actions-exercise-options').click();
+    await expect(adminPage.getByTestId('exercise-wizard')).toBeVisible({ timeout: 10_000 });
+
+    await adminPage.getByRole('button', { name: '×' }).last().click();
+    await expect(adminPage.getByTestId('exercise-wizard')).not.toBeVisible();
+  });
+
+  test('Step 1 Next is enabled after selecting a stakeholder and grant', async ({ adminPage, adminMeta }) => {
+    await adminPage.goto(`/company/${adminMeta.tenantId}/ledger`);
+    await adminPage.getByTestId('actions-menu-button').click();
+    await adminPage.getByTestId('actions-exercise-options').click();
+
+    const stakeholderSelect = adminPage.getByTestId('exercise-stakeholder-select');
+    await expect(stakeholderSelect).toBeVisible({ timeout: 10_000 });
+    const stakeholderOptions = await stakeholderSelect.locator('option').all();
+    if (stakeholderOptions.length > 1) {
+      const firstValue = await stakeholderOptions[1].getAttribute('value');
+      if (firstValue) {
+        await stakeholderSelect.selectOption(firstValue);
+        const grantSelect = adminPage.getByTestId('exercise-grant-select');
+        await expect(grantSelect).toBeVisible({ timeout: 5_000 });
+        const grantOptions = await grantSelect.locator('option').all();
+        if (grantOptions.length > 1) {
+          const grantValue = await grantOptions[1].getAttribute('value');
+          if (grantValue) {
+            await grantSelect.selectOption(grantValue);
+            await expect(adminPage.getByTestId('exercise-next-step-1')).toBeEnabled();
+          }
+        }
+      }
+    }
+  });
+
+  test('Step 2 shows as-of date input', async ({ adminPage, adminMeta }) => {
+    await adminPage.goto(`/company/${adminMeta.tenantId}/ledger`);
+    await adminPage.getByTestId('actions-menu-button').click();
+    await adminPage.getByTestId('actions-exercise-options').click();
+
+    const stakeholderSelect = adminPage.getByTestId('exercise-stakeholder-select');
+    await expect(stakeholderSelect).toBeVisible({ timeout: 10_000 });
+    const stakeholderOptions = await stakeholderSelect.locator('option').all();
+    if (stakeholderOptions.length > 1) {
+      const firstValue = await stakeholderOptions[1].getAttribute('value');
+      if (firstValue) {
+        await stakeholderSelect.selectOption(firstValue);
+        const grantSelect = adminPage.getByTestId('exercise-grant-select');
+        await expect(grantSelect).toBeVisible({ timeout: 5_000 });
+        const grantOptions = await grantSelect.locator('option').all();
+        if (grantOptions.length > 1) {
+          const grantValue = await grantOptions[1].getAttribute('value');
+          if (grantValue) {
+            await grantSelect.selectOption(grantValue);
+            await adminPage.getByTestId('exercise-next-step-1').click();
+            await expect(adminPage.getByTestId('exercise-step-2')).toBeVisible({ timeout: 5_000 });
+            await expect(adminPage.getByTestId('exercise-as-of-date')).toBeVisible();
+          }
+        }
       }
     }
   });

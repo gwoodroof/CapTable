@@ -1,17 +1,14 @@
-# FEATURES & ENHANCEMENTS
+# FEATURES
 
 
-- [ ] Admins should have access to an 'exercise options' wizard, which will enable the following:
-    Vesting Verification: Checking exactly how many options are vested and exercisable as of a specific date.
-    Payment & Taxation: Calculating the total strike price ($\text{options} \times \text{strike price}$).
-
-    The final step of the wizard will be to summarize all related changes to user and ask for confirmation from user before implementing those changes.
-
-
-# KNOWN BUGS
+# BUGS
 
 
 # FRONTLOG
+
+- [x] BUG: During 'exercise options' wizard, sometimes the 'quantity to exercise' gives an error of 'Cannot exceed exercisable balance of X', when the quantity entered equals the max exercisable options. Fixed: `exerciseCounts()` now uses Decimal.js for all summation (totalVested and alreadyExercised) instead of native JS float arithmetic, eliminating drift with non-divisible grant quantities; frontend comparisons also guard with a `1e-9` epsilon as defence-in-depth; 1 regression test added.
+
+- [x] Admins should have access to an 'Exercise Options' wizard launched from the Actions menu on the Ledger tab. Implemented: 4-step modal (Stakeholder & Grant → Vesting Verification with as-of date + exercisable count display → Payment & Share Class with cost + security dropdown → Confirmation summary); `POST /grants/exercise/counts` returns totalVested/alreadyExercised/exercisable for a grant as of a date; `POST /grants/exercise/commit` creates EXERCISE (option security) + ISSUANCE (chosen security) entries atomically via two `recordTransaction` calls, triggering email + stock certificate fire-and-forget; 16 unit tests + 7 E2E tests added. Spec: User Story 3.24.
 
 - [x] Admins on the 'Register New Investment' page should be able to pick from existing stakeholders or create a new one, like they can on the 'grant options' page. Implemented: added `<select>` dropdown listing all stakeholders (defaulting to "— Create new investor —"); selecting existing shows a read-only info card and disabled type radios; selecting "create new" shows the original name/email/type fields; `POST /stakeholders` is skipped when an existing stakeholder is chosen. 4 E2E tests added. Spec: User Story 3.23.
 
@@ -20,19 +17,12 @@
 - [x] Admins should have access to an 'investor buyout' wizard for secondary-market share transfers between existing stakeholders. Implemented: 5-step modal wizard on Ledger page ("Investor Buyout" in Actions menu → seller select → holdings-by-security + quantity + price → buyer select + backend preview → read-only cost-basis table → confirmation summary with "Confirm & Apply"); `GET /ledger/:tenantId/holdings/:stakeholderId`, `POST /ledger/:tenantId/buyout/preview`, and `POST /ledger/:tenantId/buyout/commit` on `LedgerController`; CANCELLATION for seller + ISSUANCE for buyer created atomically in one `withTenant` transaction with chain hash integrity; buyer's cert number assigned in-transaction; stock certificate emailed to buyer fire-and-forget; 4+7+9 new unit tests (251 total passing); 5 E2E tests added. Spec: User Story 3.21.
 
 - [x] Stakeholders, when they receive stock (e.g., make investment, exercise options) should receive a stock certificate attached to their notification email. Implemented: `CertificateService` generates an 8.5×11 landscape PDF (navy/gold border, company name + icon/monogram, stakeholder name, share quantity, issue date) using `pdfkit`; `certificateNumber String?` added to `LedgerTransaction` (per-tenant sequential `CS-XXXX`); `EmailService.sendLedgerNotification()` extended with optional `PostmarkAttachment[]`; `LedgerService` computes cert number inside the DB transaction and fires a cert-gen + email async IIFE for ISSUANCE/EXERCISE/TRANSFER only; VEST/CANCELLATION/ADJUSTMENT unaffected; 8 unit tests for `CertificateService` + 10 new tests in `ledger.service.spec.ts` (213 total passing). Spec: User Story 3.20.
-
 - [x] Admins should have access to a 'stakeholder offboarding' wizard from the 'actions' menu on the Ledger tab. Implemented: 5-step wizard modal (Termination Details → Vesting Recalculation → PTEP Configuration → Acceleration → Confirmation); backend `POST /grants/offboard/preview` and `/commit` endpoints; `terminatedAt`/`terminationType`/`ptepDays` added to Grant model; `materializeVestings` skips events after `terminatedAt`; CANCELLATION ledger entries for over-vested shares; VEST entries for acceleration shares/months; 5 unit tests + 6 E2E tests added. Spec: User Story 3.19.
-
 - [x] Admins (and only admins) should have access to an 'actions' menu on the ledger tab. '+ Add Investment' and '+ Grant Options' should be moved to this menu. Implemented: replaced the two standalone header buttons on the Ledger page with a single "Actions ▾" dropdown (click-outside aware) containing both items; `data-testid` attributes added for E2E targeting; 6 E2E tests added in `ledger.spec.ts`. Spec: User Story 3.18.
-
 - [x] On the '/companies' page, for each company displayed, use the icon for that company instead of the blue 3x3 table icon that's there now. Implemented: extended `Company` interface with `iconUrl`; replaced `BuildingIcon` in each card with the company's `iconUrl` image (42×42px) if set, otherwise a blue monogram square using the first letter of the company name. Spec: User Story 3.17.
-
 - [x] The 'alpha' label that is on the homepage should also be used in all of the other pages that have the icon and 'CapTable' on the top left of the page. Implemented: extracted badge + tooltip into reusable `AlphaBadge` component (`src/components/AlphaBadge.tsx`) and added it after the "CapTable" wordmark on `/companies`, `/signup`, `/privacy`, and `/terms`. Spec: User Story 3.16.
-
 - [x] The system should automatically create vesting entries on the ledger for options holders over time, in accordance with the vesting schedule. Implemented: added `grantId` and `vestingPeriodIndex` fields to `LedgerTransaction`; `computeVestingEvents()` pure function computes the per-period schedule accounting for cliff batching, frequency, and rounding; `VestingService.materializeVestings()` creates missing VEST entries idempotently (unique constraint on `(grantId, vestingPeriodIndex)`); `POST /api/v1/grants/run-vesting` is called non-blocking on every Ledger page load. 15 unit tests added. Spec: User Story 3.15.
-
-- [x] The user should be able to choose 'User Info' from the user dropdown in the top right, and modal should pop up that displays the users email (read-only) and allows the user to update their name ('First Last'). Implemented: added `PATCH /api/v1/auth/profile` endpoint that updates `User.name` in the DB and returns a fresh JWT; added "User Info" as the first item in the user dropdown on both `CompanyNav` and `/companies`; modal reads email (read-only) and name from the current JWT and POSTs the updated name to the backend, then stores the new token and updates the nav display. Spec: User Story 3.14.
-
+ [x] The user should be able to choose 'User Info' from the user dropdown in the top right, and modal should pop up that displays the users email (read-only) and allows the user to update their name ('First Last'). Implemented: added `PATCH /api/v1/auth/profile` endpoint that updates `User.name` in the DB and returns a fresh JWT; added "User Info" as the first item in the user dropdown on both `CompanyNav` and `/companies`; modal reads email (read-only) and name from the current JWT and POSTs the updated name to the backend, then stores the new token and updates the nav display. Spec: User Story 3.14.
 - [x] User, when creating a new company, should be given some tips about what 'Authorized Shares' are and how many is typical, and about what Par Values are and typical values. These tips should be provided by hovering over 'info' icons. Pre-fill these fields with 10,000,000 authorized shares and 0.0001 par value by default and then let the user change them if they want. Implemented: `openModal()` resets to `{ authorizedShares: '10000000', parValue: '0.0001' }`; added `InfoIcon` SVG and hover-based `tooltipVisible` state with descriptive tooltips for each field; `data-tooltip` attributes enable E2E targeting. Spec: User Story 3.13.
 - [x] Implement full RLS
 - [x] The user should see their own name (First Last) in the top right of the page instead of their email address. Implemented: signup form collects First/Last Name (email path); Google SSO extracts name from the ID token. `User.name` and `PendingRegistration.name` added (default ""). JWT payload now includes `name`. All nav surfaces (CompanyNav + /companies inline nav) show name with email fallback. Spec: User Story 3.12. Tests updated.

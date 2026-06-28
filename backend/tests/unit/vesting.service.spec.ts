@@ -1,6 +1,7 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { BadRequestException } from '@nestjs/common';
 import Decimal from 'decimal.js';
-import { computeVestingEvents } from '../../src/modules/grant/vesting.service';
+import { computeVestingEvents, VestingService } from '../../src/modules/grant/vesting.service';
 
 function makeGrant(opts: {
   grantDate: string;
@@ -211,5 +212,193 @@ describe('offboarding vesting calculations', () => {
       // cliff (Jan 2021) + Feb–Jun 2021 = 6 events
       expect(accelerated).toHaveLength(6);
     });
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// VestingService.exerciseCounts & exerciseCommit
+// ─────────────────────────────────────────────────────────────────────────────
+
+const TENANT_ID = 'tenant-1';
+const GRANT_ID = 'grant-1';
+const STAKEHOLDER_ID = 'sh-1';
+const OPTION_SECURITY_ID = 'sec-option';
+const ISSUANCE_SECURITY_ID = 'sec-common';
+
+const mockGrant = {
+  id: GRANT_ID,
+  tenantId: TENANT_ID,
+  stakeholderId: STAKEHOLDER_ID,
+  securityId: OPTION_SECURITY_ID,
+  quantity: new Decimal(1200),
+  strikePrice: new Decimal(0.5),
+  grantDate: new Date('2020-01-01'),
+  terminatedAt: null,
+  stakeholder: { id: STAKEHOLDER_ID, name: 'Alice', email: 'alice@example.com' },
+  security: { id: OPTION_SECURITY_ID, type: 'OPTION', name: 'Options' },
+  vestingSchedule: {
+    cliffMonths: 12,
+    vestingDurationMonths: 48,
+    vestingFrequency: 'MONTHLY',
+  },
+};
+
+const makePrisma = () => {
+  const p = {
+    grant: { findUnique: vi.fn() },
+    ledgerTransaction: { findMany: vi.fn().mockResolvedValue([]) },
+    withTenant: vi.fn(async (_: string, fn: (tx: any) => Promise<any>) => fn(p)),
+  };
+  return p;
+};
+
+const makeLedgerService = () => ({
+  recordTransaction: vi.fn().mockResolvedValue({ id: 'tx-1' }),
+});
+
+describe('VestingService.exerciseCounts', () => {
+  let service: VestingService;
+  let prisma: ReturnType<typeof makePrisma>;
+  let ledgerSvc: ReturnType<typeof makeLedgerService>;
+
+  beforeEach(() => {
+    prisma = makePrisma();
+    ledgerSvc = makeLedgerService();
+    service = new VestingService(prisma as any, ledgerSvc as any);
+    prisma.grant.findUnique.mockResolvedValue(mockGrant);
+  });
+
+  it('returns totalVested = 0 before cliff', async () => {
+    // As of 2020-06-01 (before 12-month cliff) nothing has vested
+    const result = await service.exerciseCounts(TENANT_ID, GRANT_ID, new Date('2020-06-01'));
+    expect(result.totalVested).toBe(0);
+    expect(result.exercisable).toBe(0);
+  });
+
+  it('returns totalVested = 300 (cliff only) at exactly 12 months', async () => {
+    // Cliff fires at 2021-01-01 with 300 shares (12/48 * 1200)
+    const result = await service.exerciseCounts(TENANT_ID, GRANT_ID, new Date('2021-01-01'));
+    expect(result.totalVested).toBe(300);
+    expect(result.exercisable).toBe(300);
+  });
+
+  it('subtracts already-exercised from exercisable', async () => {
+    prisma.ledgerTransaction.findMany.mockResolvedValue([
+      { quantity: new Decimal(100) },
+      { quantity: new Decimal(50) },
+    ]);
+    const result = await service.exerciseCounts(TENANT_ID, GRANT_ID, new Date('2021-01-01'));
+    expect(result.totalVested).toBe(300);
+    expect(result.alreadyExercised).toBe(150);
+    expect(result.exercisable).toBe(150);
+  });
+
+  it('exercisable is never negative', async () => {
+    prisma.ledgerTransaction.findMany.mockResolvedValue([
+      { quantity: new Decimal(999) },
+    ]);
+    const result = await service.exerciseCounts(TENANT_ID, GRANT_ID, new Date('2021-01-01'));
+    expect(result.exercisable).toBe(0);
+  });
+
+  it('caps vesting at terminatedAt if earlier than asOfDate', async () => {
+    prisma.grant.findUnique.mockResolvedValue({
+      ...mockGrant,
+      terminatedAt: new Date('2021-01-01'), // terminated at cliff date
+    });
+    // Ask for date well after termination
+    const result = await service.exerciseCounts(TENANT_ID, GRANT_ID, new Date('2023-01-01'));
+    // Only cliff vesting applies: 300 shares
+    expect(result.totalVested).toBe(300);
+  });
+
+  it('throws BadRequestException when grant is not found', async () => {
+    prisma.grant.findUnique.mockResolvedValue(null);
+    await expect(service.exerciseCounts(TENANT_ID, GRANT_ID, new Date())).rejects.toThrow(BadRequestException);
+  });
+
+  it('returns grant metadata including strikePrice', async () => {
+    const result = await service.exerciseCounts(TENANT_ID, GRANT_ID, new Date('2021-01-01'));
+    expect(result.grant.strikePrice).toBe('0.5');
+    expect(result.grant.stakeholderName).toBe('Alice');
+    expect(result.grant.securityName).toBe('Options');
+  });
+
+  it('exercisable is exact (no float drift) for non-divisible grant quantity', async () => {
+    // 1000 shares over 48 months monthly → 20.833... per period; float summation would drift
+    prisma.grant.findUnique.mockResolvedValue({
+      ...mockGrant,
+      quantity: new Decimal(1000),
+      vestingSchedule: { cliffMonths: 0, vestingDurationMonths: 48, vestingFrequency: 'MONTHLY' },
+    });
+    // As-of after all 48 periods (2024-01-01)
+    const result = await service.exerciseCounts(TENANT_ID, GRANT_ID, new Date('2024-02-01'));
+    // The full grant quantity must be exercisable, not 999.9999...
+    expect(result.totalVested).toBe(1000);
+    expect(result.exercisable).toBe(1000);
+  });
+});
+
+describe('VestingService.exerciseCommit', () => {
+  let service: VestingService;
+  let prisma: ReturnType<typeof makePrisma>;
+  let ledgerSvc: ReturnType<typeof makeLedgerService>;
+
+  beforeEach(() => {
+    prisma = makePrisma();
+    ledgerSvc = makeLedgerService();
+    service = new VestingService(prisma as any, ledgerSvc as any);
+    prisma.grant.findUnique.mockResolvedValue(mockGrant);
+    prisma.ledgerTransaction.findMany.mockResolvedValue([]);
+  });
+
+  it('calls recordTransaction twice (EXERCISE + ISSUANCE) on success', async () => {
+    await service.exerciseCommit(TENANT_ID, 'admin-1', {
+      grantId: GRANT_ID,
+      asOfDate: new Date('2021-01-01'),
+      quantity: '100',
+      issuanceSecurityId: ISSUANCE_SECURITY_ID,
+    });
+    expect(ledgerSvc.recordTransaction).toHaveBeenCalledTimes(2);
+    const [first, second] = ledgerSvc.recordTransaction.mock.calls;
+    expect(first[0].transactionType).toBe('EXERCISE');
+    expect(first[0].securityId).toBe(OPTION_SECURITY_ID);
+    expect(first[0].quantity).toBe('100');
+    expect(second[0].transactionType).toBe('ISSUANCE');
+    expect(second[0].securityId).toBe(ISSUANCE_SECURITY_ID);
+    expect(second[0].quantity).toBe('100');
+  });
+
+  it('includes strikePrice as pricePerShare on the EXERCISE entry', async () => {
+    await service.exerciseCommit(TENANT_ID, 'admin-1', {
+      grantId: GRANT_ID,
+      asOfDate: new Date('2021-01-01'),
+      quantity: '50',
+      issuanceSecurityId: ISSUANCE_SECURITY_ID,
+    });
+    const [exerciseCall] = ledgerSvc.recordTransaction.mock.calls;
+    expect(exerciseCall[0].pricePerShare).toBe('0.5');
+  });
+
+  it('throws BadRequestException when quantity exceeds exercisable', async () => {
+    await expect(
+      service.exerciseCommit(TENANT_ID, 'admin-1', {
+        grantId: GRANT_ID,
+        asOfDate: new Date('2021-01-01'),
+        quantity: '9999',
+        issuanceSecurityId: ISSUANCE_SECURITY_ID,
+      }),
+    ).rejects.toThrow(BadRequestException);
+  });
+
+  it('throws BadRequestException when quantity is zero', async () => {
+    await expect(
+      service.exerciseCommit(TENANT_ID, 'admin-1', {
+        grantId: GRANT_ID,
+        asOfDate: new Date('2021-01-01'),
+        quantity: '0',
+        issuanceSecurityId: ISSUANCE_SECURITY_ID,
+      }),
+    ).rejects.toThrow(BadRequestException);
   });
 });

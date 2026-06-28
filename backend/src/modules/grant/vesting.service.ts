@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { LedgerService } from '../ledger/ledger.service';
 import Decimal from 'decimal.js';
@@ -84,6 +84,33 @@ export function computeVestingEvents(grant: {
   }
 
   return events;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Exercise types
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface ExerciseCountsResult {
+  grant: {
+    id: string;
+    stakeholderId: string;
+    stakeholderName: string;
+    stakeholderEmail: string | null;
+    securityId: string;
+    securityName: string;
+    strikePrice: string | null;
+    grantDate: string;
+  };
+  totalVested: number;
+  alreadyExercised: number;
+  exercisable: number;
+}
+
+export interface ExerciseCommitInput {
+  grantId: string;
+  asOfDate: Date;
+  quantity: string;
+  issuanceSecurityId: string;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -383,5 +410,112 @@ export class VestingService {
     }
 
     return { cancellationsCreated, accelerationCreated, grantsTerminated };
+  }
+
+  /**
+   * Returns vesting counts for a grant as of a given date, without mutating the DB.
+   */
+  async exerciseCounts(tenantId: string, grantId: string, asOfDate: Date): Promise<ExerciseCountsResult> {
+    const grant = await this.prisma.withTenant(tenantId, (tx) =>
+      tx.grant.findUnique({
+        where: { id: grantId },
+        include: { stakeholder: true, security: true, vestingSchedule: true },
+      }),
+    );
+    if (!grant || grant.tenantId !== tenantId) {
+      throw new BadRequestException('Grant not found');
+    }
+
+    const allEvents = computeVestingEvents({
+      grantDate: grant.grantDate,
+      quantity: grant.quantity as Decimal,
+      vestingSchedule: {
+        cliffMonths: grant.vestingSchedule.cliffMonths,
+        vestingDurationMonths: grant.vestingSchedule.vestingDurationMonths,
+        vestingFrequency: grant.vestingSchedule.vestingFrequency,
+      },
+    });
+
+    // If grant was terminated before asOfDate, cap vesting at termination date
+    const vestCutoff =
+      grant.terminatedAt && grant.terminatedAt < asOfDate ? grant.terminatedAt : asOfDate;
+
+    const totalVestedDecimal = allEvents
+      .filter((ev) => ev.date <= vestCutoff)
+      .reduce((sum, ev) => sum.plus(ev.quantity), new Decimal(0));
+
+    const exerciseEntries = await this.prisma.withTenant(tenantId, (tx) =>
+      tx.ledgerTransaction.findMany({
+        where: { tenantId, grantId, transactionType: 'EXERCISE' },
+      }),
+    );
+    const alreadyExercisedDecimal = exerciseEntries.reduce(
+      (sum, e) => sum.plus(new Decimal(e.quantity.toString())),
+      new Decimal(0),
+    );
+    const exercisableDecimal = totalVestedDecimal.minus(alreadyExercisedDecimal);
+    const exercisable = exercisableDecimal.lessThan(0) ? 0 : exercisableDecimal.toNumber();
+
+    return {
+      grant: {
+        id: grant.id,
+        stakeholderId: grant.stakeholderId,
+        stakeholderName: grant.stakeholder.name,
+        stakeholderEmail: grant.stakeholder.email,
+        securityId: grant.securityId,
+        securityName: grant.security.name ?? grant.security.type,
+        strikePrice: grant.strikePrice ? grant.strikePrice.toString() : null,
+        grantDate: grant.grantDate.toISOString(),
+      },
+      totalVested: totalVestedDecimal.toNumber(),
+      alreadyExercised: alreadyExercisedDecimal.toNumber(),
+      exercisable,
+    };
+  }
+
+  /**
+   * Creates an EXERCISE entry (reduces option balance) and an ISSUANCE entry (issues
+   * shares of the selected security) atomically via two recordTransaction calls.
+   */
+  async exerciseCommit(
+    tenantId: string,
+    adminId: string,
+    input: ExerciseCommitInput,
+  ): Promise<{ exerciseEntry: object; issuanceEntry: object }> {
+    const { grantId, asOfDate, quantity, issuanceSecurityId } = input;
+
+    const counts = await this.exerciseCounts(tenantId, grantId, asOfDate);
+    const qtyNum = Number(quantity);
+
+    if (qtyNum <= 0) throw new BadRequestException('Quantity must be greater than zero');
+    if (qtyNum > counts.exercisable + 0.000001) {
+      throw new BadRequestException(
+        `Cannot exercise ${qtyNum}; only ${counts.exercisable} options are exercisable as of this date`,
+      );
+    }
+
+    const exerciseEntry = await this.ledgerService.recordTransaction({
+      tenantId,
+      transactionType: 'EXERCISE',
+      stakeholderId: counts.grant.stakeholderId,
+      securityId: counts.grant.securityId,
+      quantity,
+      pricePerShare: counts.grant.strikePrice ?? undefined,
+      grantId,
+      initiatedBy: adminId,
+      timestamp: asOfDate,
+    });
+
+    const issuanceEntry = await this.ledgerService.recordTransaction({
+      tenantId,
+      transactionType: 'ISSUANCE',
+      stakeholderId: counts.grant.stakeholderId,
+      securityId: issuanceSecurityId,
+      quantity,
+      initiatedBy: adminId,
+      timestamp: asOfDate,
+    });
+
+    return { exerciseEntry, issuanceEntry };
   }
 }

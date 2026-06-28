@@ -75,6 +75,38 @@ interface SellerHolding {
   balance: string;
 }
 
+interface GrantItem {
+  id: string;
+  stakeholderId: string;
+  stakeholder: { id: string; name: string; email: string | null };
+  security: { id: string; type: string; name: string | null };
+  quantity: string;
+  strikePrice: string | null;
+  grantDate: string;
+}
+
+interface SecurityItem {
+  id: string;
+  type: string;
+  name: string | null;
+}
+
+interface ExerciseCounts {
+  grant: {
+    id: string;
+    stakeholderId: string;
+    stakeholderName: string;
+    stakeholderEmail: string | null;
+    securityId: string;
+    securityName: string;
+    strikePrice: string | null;
+    grantDate: string;
+  };
+  totalVested: number;
+  alreadyExercised: number;
+  exercisable: number;
+}
+
 interface BuyoutPreviewResult {
   seller: { id: string; name: string; email: string | null };
   buyer: { id: string; name: string; email: string | null };
@@ -144,6 +176,23 @@ export default function LedgerPage() {
   const [bSubmitting, setBSubmitting] = useState(false);
   const [bSubmitError, setBSubmitError] = useState('');
   const [bSubmitDone, setBSubmitDone] = useState(false);
+  // Exercise wizard state
+  const [exOpen, setExOpen] = useState(false);
+  const [exStep, setExStep] = useState<1 | 2 | 3 | 4>(1);
+  const [exAllGrants, setExAllGrants] = useState<GrantItem[]>([]);
+  const [exSecurities, setExSecurities] = useState<SecurityItem[]>([]);
+  const [exStakeholderId, setExStakeholderId] = useState('');
+  const [exGrantId, setExGrantId] = useState('');
+  const [exAsOfDate, setExAsOfDate] = useState('');
+  const [exCounts, setExCounts] = useState<ExerciseCounts | null>(null);
+  const [exCountsLoading, setExCountsLoading] = useState(false);
+  const [exCountsError, setExCountsError] = useState('');
+  const [exQuantity, setExQuantity] = useState('');
+  const [exIssuanceSecurityId, setExIssuanceSecurityId] = useState('');
+  const [exSubmitting, setExSubmitting] = useState(false);
+  const [exSubmitError, setExSubmitError] = useState('');
+  const [exSubmitDone, setExSubmitDone] = useState(false);
+
   const [stakeholders, setStakeholders] = useState<StakeholderItem[]>([]);
   const [wStakeholderId, setWStakeholderId] = useState('');
   const [wTerminationDate, setWTerminationDate] = useState('');
@@ -412,6 +461,81 @@ export default function LedgerPage() {
     }
   }
 
+  function openExerciseWizard() {
+    setActionsOpen(false);
+    setExStep(1);
+    setExAllGrants([]);
+    setExSecurities([]);
+    setExStakeholderId('');
+    setExGrantId('');
+    setExAsOfDate('');
+    setExCounts(null);
+    setExCountsError('');
+    setExQuantity('');
+    setExIssuanceSecurityId('');
+    setExSubmitError('');
+    setExSubmitDone(false);
+    setExOpen(true);
+
+    const token = localStorage.getItem('ct_token');
+    if (!token || !companyId) return;
+    const headers = { Authorization: `Bearer ${token}` };
+    Promise.all([
+      fetch(`${API}/grants`, { headers }).then((r) => r.json()),
+      fetch(`${API}/securities`, { headers }).then((r) => r.json()),
+    ])
+      .then(([grantData, securityData]: [unknown, unknown]) => {
+        setExAllGrants(Array.isArray(grantData) ? grantData : []);
+        setExSecurities(Array.isArray(securityData) ? securityData : []);
+      })
+      .catch(() => {});
+  }
+
+  async function fetchExerciseCounts(grantId: string, asOfDate: string) {
+    const token = localStorage.getItem('ct_token');
+    if (!token || !companyId || !grantId || !asOfDate) return;
+    setExCountsLoading(true);
+    setExCountsError('');
+    setExCounts(null);
+    try {
+      const res = await fetch(`${API}/grants/exercise/counts`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ grantId, asOfDate }),
+      });
+      if (!res.ok) throw new Error('Failed to load vesting counts');
+      setExCounts(await res.json());
+    } catch {
+      setExCountsError('Failed to load vesting data. Please check the date and try again.');
+    } finally {
+      setExCountsLoading(false);
+    }
+  }
+
+  async function commitExercise() {
+    const token = localStorage.getItem('ct_token');
+    if (!token || !companyId) return;
+    setExSubmitting(true);
+    setExSubmitError('');
+    try {
+      const res = await fetch(`${API}/grants/exercise/commit`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ grantId: exGrantId, asOfDate: exAsOfDate, quantity: exQuantity, issuanceSecurityId: exIssuanceSecurityId }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({})) as Record<string, string>;
+        throw new Error(err.message || 'Commit failed');
+      }
+      setExSubmitDone(true);
+      setTimeout(() => { setExOpen(false); window.location.reload(); }, 2000);
+    } catch (e) {
+      setExSubmitError((e as Error).message || 'Failed to apply exercise. Please try again.');
+    } finally {
+      setExSubmitting(false);
+    }
+  }
+
   if (loading) {
     return (
       <div style={{ minHeight: '100vh', background: '#0f172a', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -523,6 +647,16 @@ export default function LedgerPage() {
                     onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#94a3b8'; }}
                   >
                     Investor Buyout
+                  </button>
+                  <div style={{ borderTop: '1px solid #334155' }} />
+                  <button
+                    data-testid="actions-exercise-options"
+                    onClick={openExerciseWizard}
+                    style={dropdownItemStyle}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = '#0f172a'; e.currentTarget.style.color = 'white'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#94a3b8'; }}
+                  >
+                    Exercise Options
                   </button>
                 </div>
               )}
@@ -1419,6 +1553,335 @@ export default function LedgerPage() {
                       }}
                     >
                       {submitting ? 'Applying…' : 'Confirm & Apply'}
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Exercise Options wizard ── */}
+      {exOpen && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 60, padding: '24px' }}>
+          <div
+            data-testid="exercise-wizard"
+            style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: '16px', width: '100%', maxWidth: '640px', maxHeight: '92vh', overflowY: 'auto', display: 'flex', flexDirection: 'column' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ padding: '20px 24px', borderBottom: '1px solid #334155', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div>
+                <h2 style={{ margin: 0, fontWeight: 700, fontSize: '18px', color: 'white' }}>Exercise Options</h2>
+                {!exSubmitDone && <p style={{ margin: '4px 0 0', fontSize: '12px', color: '#64748b' }}>Step {exStep} of 4</p>}
+              </div>
+              <button onClick={() => setExOpen(false)} style={{ background: 'transparent', border: 'none', color: '#64748b', fontSize: '20px', cursor: 'pointer', lineHeight: 1, padding: '4px 8px' }}>×</button>
+            </div>
+
+            {!exSubmitDone && (
+              <div style={{ display: 'flex', gap: 0 }}>
+                {[1, 2, 3, 4].map((s) => (
+                  <div key={s} style={{ flex: 1, height: '3px', background: s <= exStep ? '#0066cc' : '#334155', transition: 'background 0.2s' }} />
+                ))}
+              </div>
+            )}
+
+            <div style={{ padding: '28px 24px', flex: 1 }}>
+
+              {/* ── Step 1: Stakeholder & Grant ── */}
+              {exStep === 1 && (
+                <div data-testid="exercise-step-1">
+                  <h3 style={stepTitle}>Step 1: Stakeholder &amp; Grant</h3>
+                  <p style={stepDesc}>Select the options holder and the specific grant to exercise.</p>
+
+                  {(() => {
+                    const uniqueStakeholders = Array.from(
+                      new Map(exAllGrants.map((g) => [g.stakeholderId, g.stakeholder])).values()
+                    );
+                    const grantsForStakeholder = exAllGrants.filter((g) => g.stakeholderId === exStakeholderId);
+                    return (
+                      <>
+                        <label style={labelStyle}>Options Holder</label>
+                        <select
+                          data-testid="exercise-stakeholder-select"
+                          value={exStakeholderId}
+                          onChange={(e) => { setExStakeholderId(e.target.value); setExGrantId(''); }}
+                          style={inputStyle}
+                        >
+                          <option value="">— Select options holder —</option>
+                          {uniqueStakeholders.map((s) => (
+                            <option key={s.id} value={s.id}>{s.name}{s.email ? ` (${s.email})` : ''}</option>
+                          ))}
+                        </select>
+
+                        {exStakeholderId && (
+                          <>
+                            <label style={labelStyle}>Grant</label>
+                            <select
+                              data-testid="exercise-grant-select"
+                              value={exGrantId}
+                              onChange={(e) => setExGrantId(e.target.value)}
+                              style={inputStyle}
+                            >
+                              <option value="">— Select grant —</option>
+                              {grantsForStakeholder.map((g) => (
+                                <option key={g.id} value={g.id}>
+                                  {formatDate(g.grantDate)} — {formatNumber(g.quantity)} options
+                                  {g.strikePrice ? ` at $${Number(g.strikePrice).toFixed(4)}/share` : ''}
+                                </option>
+                              ))}
+                            </select>
+                          </>
+                        )}
+                      </>
+                    );
+                  })()}
+                </div>
+              )}
+
+              {/* ── Step 2: Vesting Verification ── */}
+              {exStep === 2 && (
+                <div data-testid="exercise-step-2">
+                  <h3 style={stepTitle}>Step 2: Vesting Verification</h3>
+                  <p style={stepDesc}>Enter the exercise date. The system will calculate how many options are exercisable as of that date.</p>
+
+                  <label style={labelStyle}>Exercise Date (as-of)</label>
+                  <input
+                    data-testid="exercise-as-of-date"
+                    type="date"
+                    value={exAsOfDate}
+                    onChange={(e) => {
+                      setExAsOfDate(e.target.value);
+                      setExCounts(null);
+                      setExQuantity('');
+                      if (e.target.value) fetchExerciseCounts(exGrantId, e.target.value);
+                    }}
+                    style={inputStyle}
+                  />
+
+                  {exCountsLoading && (
+                    <div style={{ color: '#64748b', padding: '16px 0' }}>Loading vesting data…</div>
+                  )}
+                  {exCountsError && (
+                    <div style={{ color: '#f87171', fontSize: '13px', marginBottom: '16px' }}>{exCountsError}</div>
+                  )}
+
+                  {exCounts && !exCountsLoading && (
+                    <>
+                      <div style={{ background: '#0f172a', borderRadius: '10px', padding: '16px', marginBottom: '20px' }}>
+                        <p style={{ margin: '0 0 10px', fontSize: '11px', fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Vesting Summary</p>
+                        {[
+                          ['Total vested as of date', formatNumber(exCounts.totalVested)],
+                          ['Already exercised', formatNumber(exCounts.alreadyExercised)],
+                          ['Exercisable', formatNumber(exCounts.exercisable)],
+                        ].map(([label, value]) => (
+                          <div key={label} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+                            <span style={{ fontSize: '13px', color: '#94a3b8' }}>{label}</span>
+                            <span style={{ fontSize: '13px', color: label === 'Exercisable' ? (exCounts.exercisable > 0 ? '#34d399' : '#f87171') : 'white', fontWeight: 600 }}>{value}</span>
+                          </div>
+                        ))}
+                      </div>
+
+                      {exCounts.exercisable <= 0 ? (
+                        <div style={{ color: '#f87171', fontSize: '13px' }}>
+                          No options are exercisable as of this date. The holder has either not yet vested sufficient options, or all vested options have already been exercised.
+                        </div>
+                      ) : (
+                        <>
+                          <label style={labelStyle}>
+                            Quantity to Exercise
+                            <span style={{ color: '#475569', fontWeight: 400, textTransform: 'none' }}> (max {formatNumber(exCounts.exercisable)})</span>
+                          </label>
+                          <input
+                            data-testid="exercise-quantity-input"
+                            type="number"
+                            min="1"
+                            step="1"
+                            value={exQuantity}
+                            onChange={(e) => setExQuantity(e.target.value)}
+                            placeholder="e.g. 5000"
+                            style={{
+                              ...inputStyle,
+                              borderColor: exQuantity !== '' && (Number(exQuantity) <= 0 || Number(exQuantity) > exCounts.exercisable + 1e-9) ? '#f87171' : '#334155',
+                            }}
+                          />
+                          {exQuantity !== '' && Number(exQuantity) > exCounts.exercisable + 1e-9 && (
+                            <p style={{ color: '#f87171', fontSize: '12px', marginTop: '-12px', marginBottom: '12px' }}>
+                              Cannot exceed exercisable balance of {formatNumber(exCounts.exercisable)}.
+                            </p>
+                          )}
+                          {exQuantity !== '' && Number(exQuantity) <= 0 && (
+                            <p style={{ color: '#f87171', fontSize: '12px', marginTop: '-12px', marginBottom: '12px' }}>
+                              Quantity must be greater than zero.
+                            </p>
+                          )}
+                        </>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+
+              {/* ── Step 3: Payment & Share Class ── */}
+              {exStep === 3 && exCounts && (
+                <div data-testid="exercise-step-3">
+                  <h3 style={stepTitle}>Step 3: Payment &amp; Share Class</h3>
+                  <p style={stepDesc}>Review the exercise cost and select the security to issue in exchange for the exercised options.</p>
+
+                  <div style={{ background: '#0f172a', borderRadius: '10px', padding: '16px', marginBottom: '20px' }}>
+                    <p style={{ margin: '0 0 10px', fontSize: '11px', fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Exercise Cost</p>
+                    {[
+                      ['Options exercising', formatNumber(exQuantity)],
+                      ['Strike price', exCounts.grant.strikePrice ? `$${Number(exCounts.grant.strikePrice).toFixed(4)}/share` : '—'],
+                      ['Total payment due', exCounts.grant.strikePrice
+                        ? `$${(Number(exQuantity) * Number(exCounts.grant.strikePrice)).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                        : '—'],
+                    ].map(([label, value]) => (
+                      <div key={label} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+                        <span style={{ fontSize: '13px', color: '#94a3b8' }}>{label}</span>
+                        <span style={{ fontSize: '13px', color: label === 'Total payment due' ? 'white' : '#e2e8f0', fontWeight: label === 'Total payment due' ? 700 : 500 }}>{value}</span>
+                      </div>
+                    ))}
+                  </div>
+
+                  <label style={labelStyle}>Security to Issue (Common Shares)</label>
+                  <select
+                    data-testid="exercise-issuance-security-select"
+                    value={exIssuanceSecurityId}
+                    onChange={(e) => setExIssuanceSecurityId(e.target.value)}
+                    style={inputStyle}
+                  >
+                    <option value="">— Select security —</option>
+                    {exSecurities.map((s) => (
+                      <option key={s.id} value={s.id}>{s.name ?? s.type.replace(/_/g, ' ')}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {/* ── Step 4: Confirmation ── */}
+              {exStep === 4 && exCounts && (
+                <div data-testid="exercise-step-4">
+                  {exSubmitDone ? (
+                    <div style={{ textAlign: 'center', padding: '32px 0' }}>
+                      <div style={{ fontSize: '48px', marginBottom: '16px' }}>✓</div>
+                      <h3 style={{ color: '#34d399', fontWeight: 700, fontSize: '20px', margin: '0 0 8px' }}>Exercise complete</h3>
+                      <p style={{ color: '#64748b', fontSize: '14px', margin: 0 }}>Ledger has been updated. Refreshing…</p>
+                    </div>
+                  ) : (
+                    <>
+                      <h3 style={stepTitle}>Step 4: Confirm Exercise</h3>
+                      <p style={stepDesc}>Review the changes before applying them to the ledger. This action cannot be undone.</p>
+
+                      <div style={{ background: '#0f172a', borderRadius: '10px', padding: '16px', marginBottom: '12px' }}>
+                        <p style={{ margin: '0 0 10px', fontSize: '11px', fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Transaction Summary</p>
+                        {[
+                          ['Options Holder', exCounts.grant.stakeholderName],
+                          ['Grant Date', formatDate(exCounts.grant.grantDate)],
+                          ['Exercise Date', formatDate(exAsOfDate)],
+                          ['Quantity', formatNumber(exQuantity)],
+                          ['Strike Price', exCounts.grant.strikePrice ? `$${Number(exCounts.grant.strikePrice).toFixed(4)}/share` : '—'],
+                          ['Total Payment Due', exCounts.grant.strikePrice
+                            ? `$${(Number(exQuantity) * Number(exCounts.grant.strikePrice)).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                            : '—'],
+                        ].map(([label, value]) => (
+                          <div key={label} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+                            <span style={{ fontSize: '13px', color: '#94a3b8' }}>{label}</span>
+                            <span style={{ fontSize: '13px', color: 'white', fontWeight: 600 }}>{value}</span>
+                          </div>
+                        ))}
+                      </div>
+
+                      <div style={{ background: '#0f172a', borderRadius: '10px', padding: '16px', marginBottom: '12px' }}>
+                        <p style={{ margin: '0 0 10px', fontSize: '11px', fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Ledger Entries to Create</p>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                            <span style={{ fontSize: '13px', color: '#f87171' }}>EXERCISE — {exCounts.grant.securityName}</span>
+                            <span style={{ fontSize: '13px', color: '#f87171', fontWeight: 600 }}>−{formatNumber(exQuantity)}</span>
+                          </div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                            <span style={{ fontSize: '13px', color: '#34d399' }}>
+                              ISSUANCE — {exSecurities.find((s) => s.id === exIssuanceSecurityId)?.name
+                                ?? exSecurities.find((s) => s.id === exIssuanceSecurityId)?.type.replace(/_/g, ' ')
+                                ?? ''}
+                            </span>
+                            <span style={{ fontSize: '13px', color: '#34d399', fontWeight: 600 }}>+{formatNumber(exQuantity)}</span>
+                          </div>
+                        </div>
+                        <p style={{ margin: '10px 0 0', fontSize: '11px', color: '#475569' }}>
+                          A stock certificate will be emailed to {exCounts.grant.stakeholderEmail || exCounts.grant.stakeholderName}.
+                        </p>
+                      </div>
+
+                      {exSubmitError && (
+                        <div style={{ color: '#f87171', fontSize: '13px', marginBottom: '12px' }}>{exSubmitError}</div>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Wizard footer */}
+            {!exSubmitDone && (
+              <div style={{ padding: '16px 24px', borderTop: '1px solid #334155', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <button onClick={() => setExOpen(false)} style={cancelBtnStyle}>Cancel</button>
+                <div style={{ display: 'flex', gap: '10px' }}>
+                  {exStep > 1 && (
+                    <button onClick={() => setExStep((s) => (s - 1) as 1 | 2 | 3 | 4)} style={backBtnStyle}>← Back</button>
+                  )}
+                  {exStep === 1 && (
+                    <button
+                      data-testid="exercise-next-step-1"
+                      disabled={!exGrantId}
+                      onClick={() => setExStep(2)}
+                      style={nextBtnStyle(!exGrantId)}
+                    >
+                      Next →
+                    </button>
+                  )}
+                  {exStep === 2 && (() => {
+                    const qtyNum = Number(exQuantity);
+                    const disabled = !exCounts || exCounts.exercisable <= 0 || !exQuantity || qtyNum <= 0 || qtyNum > exCounts.exercisable + 1e-9 || exCountsLoading;
+                    return (
+                      <button
+                        data-testid="exercise-next-step-2"
+                        disabled={disabled}
+                        onClick={() => setExStep(3)}
+                        style={nextBtnStyle(disabled)}
+                      >
+                        Next →
+                      </button>
+                    );
+                  })()}
+                  {exStep === 3 && (
+                    <button
+                      data-testid="exercise-next-step-3"
+                      disabled={!exIssuanceSecurityId}
+                      onClick={() => setExStep(4)}
+                      style={nextBtnStyle(!exIssuanceSecurityId)}
+                    >
+                      Review →
+                    </button>
+                  )}
+                  {exStep === 4 && (
+                    <button
+                      data-testid="exercise-confirm-button"
+                      disabled={exSubmitting}
+                      onClick={commitExercise}
+                      style={{
+                        background: exSubmitting ? '#475569' : '#dc2626',
+                        border: 'none',
+                        borderRadius: '8px',
+                        color: 'white',
+                        padding: '10px 20px',
+                        fontSize: '14px',
+                        fontWeight: 600,
+                        fontFamily: "'Outfit', sans-serif",
+                        cursor: exSubmitting ? 'not-allowed' : 'pointer',
+                      }}
+                    >
+                      {exSubmitting ? 'Applying…' : 'Confirm & Apply'}
                     </button>
                   )}
                 </div>
