@@ -441,6 +441,43 @@
 
 ---
 
+### User Story 3.23 - Stakeholder Picker on Register New Investment (Priority: P1)
+
+**As an** admin, **I want to** pick an existing stakeholder (or create a new one) on the "Register New Investment" page, **so that** repeat investors don't get duplicate stakeholder records.
+
+**Why this priority**: The equivalent Grant Options page already supports existing-or-new. Investment is the other primary issuance entry point, and the current always-create behavior creates duplicates for returning investors.
+
+**Independent Test**: Navigate to `/company/:id/investments/new`. The page should render a "Select existing investor" dropdown. Select an existing stakeholder; the name/email input fields should disappear and a read-only card should appear. The type radio should be visible but disabled. Switch back to "Create new investor"; the input fields should reappear.
+
+**Acceptance Scenarios**:
+
+1. **Given** an admin navigates to `investments/new`, **Then** a "Select existing investor" `<select>` is visible at the top of the Investor section, defaulting to "— Create new investor —".
+2. **Given** the default "Create new investor" is selected, **Then** Name, Email, and Type fields are shown and editable — same as before.
+3. **Given** the admin selects an existing stakeholder, **Then** a read-only info card (name, email if present, type) replaces the input fields.
+4. **Given** an existing stakeholder is selected, **Then** the Type radio buttons are rendered but **disabled**, reflecting the stakeholder's existing type.
+5. **Given** the admin submits with an existing stakeholder selected, **Then** the `POST /stakeholders` call is skipped and the existing stakeholder's ID is used directly in the issuance.
+6. **Given** the admin switches back to "— Create new investor —" after selecting one, **Then** the input fields reappear and are editable.
+7. **Given** a selected stakeholder has no email, **Then** the info card omits the email line.
+
+**Validation Rules**:
+- Name is required only when "Create new investor" is selected.
+- All existing security/issuance validation is unchanged.
+
+**Backend Endpoints Used**:
+- `GET /api/v1/stakeholders` — fetches all stakeholders for the dropdown on page load.
+- `POST /api/v1/stakeholders` — called only when creating a new investor.
+- `POST /api/v1/securities` — unchanged.
+- `POST /api/v1/ledger/:tenantId/issuance` — unchanged.
+
+**Key Implementation Notes**:
+- No backend changes required.
+- Added `Stakeholder` interface, `stakeholders` state, `selectedStakeholderId` state, and `useEffect` fetch to `investments/new.tsx`.
+- `isNew` computed as `selectedStakeholderId === ''`; controls which branch of the Investor section renders.
+- `data-testid` attributes: `investor-select`, `investor-name`, `investor-email`.
+- 4 E2E tests added in `ledger.spec.ts` (dropdown visible, default shows new fields, selecting existing hides fields and disables radios, switching back restores fields).
+
+---
+
 ### User Story 3.17 - Company Icons on the /companies List (Priority: P2)
 
 **As a** user on the `/companies` page, **I want to** see each company's icon (or monogram fallback) on its card, **so that** companies are visually distinct and the list feels consistent with the rest of the app.

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
 
@@ -10,6 +10,13 @@ function decodeJwt(token: string): Record<string, unknown> | null {
   } catch {
     return null;
   }
+}
+
+interface Stakeholder {
+  id: string;
+  name: string;
+  email: string | null;
+  type: string;
 }
 
 const SECURITY_TYPES = [
@@ -24,6 +31,9 @@ export default function NewInvestment() {
   const router = useRouter();
   const { companyId } = router.query as { companyId?: string };
 
+  const [stakeholders, setStakeholders] = useState<Stakeholder[]>([]);
+  const [selectedStakeholderId, setSelectedStakeholderId] = useState('');
+
   const [form, setForm] = useState({
     investorName: '',
     investorEmail: '',
@@ -36,9 +46,21 @@ export default function NewInvestment() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
+  useEffect(() => {
+    const token = localStorage.getItem('ct_token');
+    if (!token) return;
+    fetch(`${API}/stakeholders`, { headers: { Authorization: `Bearer ${token}` } })
+      .then((r) => r.ok ? r.json() : [])
+      .then(setStakeholders)
+      .catch(() => {});
+  }, []);
+
   function set(field: string, value: string) {
     setForm((prev) => ({ ...prev, [field]: value }));
   }
+
+  const isNew = selectedStakeholderId === '';
+  const selectedStakeholder = stakeholders.find((s) => s.id === selectedStakeholderId);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -51,20 +73,25 @@ export default function NewInvestment() {
     if (!payload) { router.replace('/login'); return; }
     const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
 
-    // Use companyId from URL; fall back to JWT's tenantId for backward compatibility
     const tenantId = companyId ?? (payload.tenantId as string);
 
     try {
-      const shRes = await fetch(`${API}/stakeholders`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ name: form.investorName, email: form.investorEmail || undefined, type: form.investorType }),
-      });
-      if (!shRes.ok) {
-        const err = await shRes.json().catch(() => ({}));
-        throw new Error(err.message || 'Failed to create stakeholder');
+      let stakeholderId: string;
+      if (!isNew) {
+        stakeholderId = selectedStakeholderId;
+      } else {
+        const shRes = await fetch(`${API}/stakeholders`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ name: form.investorName, email: form.investorEmail || undefined, type: form.investorType }),
+        });
+        if (!shRes.ok) {
+          const err = await shRes.json().catch(() => ({}));
+          throw new Error(err.message || 'Failed to create stakeholder');
+        }
+        const stakeholder = await shRes.json();
+        stakeholderId = stakeholder.id;
       }
-      const stakeholder = await shRes.json();
 
       const secRes = await fetch(`${API}/securities`, {
         method: 'POST',
@@ -81,7 +108,7 @@ export default function NewInvestment() {
         method: 'POST',
         headers,
         body: JSON.stringify({
-          stakeholderId: stakeholder.id,
+          stakeholderId,
           securityId: security.id,
           quantity: form.quantity,
           pricePerShare: form.pricePerShare || undefined,
@@ -122,7 +149,7 @@ export default function NewInvestment() {
         <div style={{ maxWidth: '640px', margin: '0 auto', padding: '48px 32px' }}>
           <h1 style={{ fontWeight: 800, fontSize: '24px', color: 'white', margin: '0 0 8px 0' }}>Register New Investment</h1>
           <p style={{ color: '#64748b', fontSize: '14px', margin: '0 0 40px 0' }}>
-            Creates an investor stakeholder, a security instrument, and records an issuance in the ledger.
+            Select an existing investor or create a new one, then configure the security and issuance.
           </p>
 
           {error && (
@@ -134,25 +161,80 @@ export default function NewInvestment() {
           <form onSubmit={handleSubmit}>
             <section style={sectionStyle}>
               <h2 style={sectionTitle}>Investor</h2>
+
               <div style={fieldRow}>
-                <label style={labelStyle}>Name *</label>
-                <input required value={form.investorName} onChange={(e) => set('investorName', e.target.value)} placeholder="e.g. Acme Ventures LLC" style={inputStyle} />
-              </div>
-              <div style={fieldRow}>
-                <label style={labelStyle}>Email</label>
-                <input type="email" value={form.investorEmail} onChange={(e) => set('investorEmail', e.target.value)} placeholder="investor@example.com" style={inputStyle} />
-              </div>
-              <div style={fieldRow}>
-                <label style={labelStyle}>Type *</label>
-                <div style={{ display: 'flex', gap: '16px' }}>
-                  {(['ENTITY', 'INDIVIDUAL'] as const).map((t) => (
-                    <label key={t} style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', color: '#94a3b8', fontSize: '14px' }}>
-                      <input type="radio" name="investorType" value={t} checked={form.investorType === t} onChange={() => set('investorType', t)} />
-                      {t === 'ENTITY' ? 'Entity (fund, corp)' : 'Individual'}
-                    </label>
+                <label style={labelStyle}>Select existing investor</label>
+                <select
+                  data-testid="investor-select"
+                  value={selectedStakeholderId}
+                  onChange={(e) => setSelectedStakeholderId(e.target.value)}
+                  style={{ ...inputStyle, appearance: 'none' as const, color: selectedStakeholderId ? 'white' : '#64748b' }}
+                >
+                  <option value="">— Create new investor —</option>
+                  {stakeholders.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}{s.email ? ` (${s.email})` : ''}
+                    </option>
                   ))}
-                </div>
+                </select>
               </div>
+
+              {!isNew && selectedStakeholder ? (
+                <>
+                  <div style={{ background: '#0f172a', borderRadius: '8px', padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: '4px', marginBottom: '16px' }}>
+                    <span style={{ color: 'white', fontWeight: 600, fontSize: '14px' }}>{selectedStakeholder.name}</span>
+                    {selectedStakeholder.email && <span style={{ color: '#64748b', fontSize: '13px' }}>{selectedStakeholder.email}</span>}
+                    <span style={{ color: '#475569', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '0.4px' }}>{selectedStakeholder.type}</span>
+                  </div>
+                  <div style={fieldRow}>
+                    <label style={labelStyle}>Type</label>
+                    <div style={{ display: 'flex', gap: '16px' }}>
+                      {(['ENTITY', 'INDIVIDUAL'] as const).map((t) => (
+                        <label key={t} style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'not-allowed', color: '#475569', fontSize: '14px' }}>
+                          <input type="radio" name="investorType" value={t} checked={selectedStakeholder.type === t} disabled readOnly />
+                          {t === 'ENTITY' ? 'Entity (fund, corp)' : 'Individual'}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div style={fieldRow}>
+                    <label style={labelStyle}>Name *</label>
+                    <input
+                      data-testid="investor-name"
+                      required={isNew}
+                      value={form.investorName}
+                      onChange={(e) => set('investorName', e.target.value)}
+                      placeholder="e.g. Acme Ventures LLC"
+                      style={inputStyle}
+                    />
+                  </div>
+                  <div style={fieldRow}>
+                    <label style={labelStyle}>Email</label>
+                    <input
+                      data-testid="investor-email"
+                      type="email"
+                      value={form.investorEmail}
+                      onChange={(e) => set('investorEmail', e.target.value)}
+                      placeholder="investor@example.com"
+                      style={inputStyle}
+                    />
+                  </div>
+                  <div style={fieldRow}>
+                    <label style={labelStyle}>Type *</label>
+                    <div style={{ display: 'flex', gap: '16px' }}>
+                      {(['ENTITY', 'INDIVIDUAL'] as const).map((t) => (
+                        <label key={t} style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', color: '#94a3b8', fontSize: '14px' }}>
+                          <input type="radio" name="investorType" value={t} checked={form.investorType === t} onChange={() => set('investorType', t)} />
+                          {t === 'ENTITY' ? 'Entity (fund, corp)' : 'Individual'}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              )}
             </section>
 
             <section style={sectionStyle}>

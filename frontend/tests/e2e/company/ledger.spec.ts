@@ -2,6 +2,7 @@
  * User Story 3.18 — Actions menu on the Ledger tab
  * User Story 3.19 — Options Holder Offboarding Wizard
  * User Story 3.21 — Investor Buyout Wizard
+ * User Story 3.23 — Stakeholder Picker on Register New Investment
  */
 import { test, expect } from '../fixtures';
 
@@ -190,6 +191,55 @@ test.describe('User Story 3.21 — Investor Buyout Wizard', () => {
       if (firstValue) {
         await sellerSelect.selectOption(firstValue);
         await expect(adminPage.getByTestId('buyout-next-step-1')).toBeEnabled();
+      }
+    }
+  });
+});
+
+test.describe('User Story 3.23 — Stakeholder Picker on Register New Investment', () => {
+  test('investments/new page loads with a stakeholder select dropdown', async ({ adminPage, adminMeta }) => {
+    await adminPage.goto(`/company/${adminMeta.tenantId}/investments/new`);
+    await expect(adminPage.getByTestId('investor-select')).toBeVisible({ timeout: 15_000 });
+  });
+
+  test('default option is "Create new investor" and new investor fields are shown', async ({ adminPage, adminMeta }) => {
+    await adminPage.goto(`/company/${adminMeta.tenantId}/investments/new`);
+    const select = adminPage.getByTestId('investor-select');
+    await expect(select).toHaveValue('');
+    await expect(adminPage.getByTestId('investor-name')).toBeVisible();
+    await expect(adminPage.getByTestId('investor-email')).toBeVisible();
+  });
+
+  test('selecting an existing stakeholder hides new investor fields and shows info card', async ({ adminPage, adminMeta }) => {
+    await adminPage.goto(`/company/${adminMeta.tenantId}/investments/new`);
+    const select = adminPage.getByTestId('investor-select');
+    const options = await select.locator('option').all();
+
+    if (options.length > 1) {
+      const firstValue = await options[1].getAttribute('value');
+      if (firstValue) {
+        await select.selectOption(firstValue);
+        await expect(adminPage.getByTestId('investor-name')).not.toBeVisible();
+        await expect(adminPage.getByTestId('investor-email')).not.toBeVisible();
+        // Type radios are present but disabled
+        const radios = adminPage.locator('input[name="investorType"]');
+        await expect(radios.first()).toBeDisabled();
+      }
+    }
+  });
+
+  test('switching back to "Create new investor" restores the new investor fields', async ({ adminPage, adminMeta }) => {
+    await adminPage.goto(`/company/${adminMeta.tenantId}/investments/new`);
+    const select = adminPage.getByTestId('investor-select');
+    const options = await select.locator('option').all();
+
+    if (options.length > 1) {
+      const firstValue = await options[1].getAttribute('value');
+      if (firstValue) {
+        await select.selectOption(firstValue);
+        await select.selectOption('');
+        await expect(adminPage.getByTestId('investor-name')).toBeVisible();
+        await expect(adminPage.getByTestId('investor-email')).toBeVisible();
       }
     }
   });
